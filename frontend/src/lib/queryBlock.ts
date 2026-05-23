@@ -1,85 +1,12 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { queryNotes, listTags, getFieldValues, type NoteQueryResult, type TagCount } from './api';
-import { emit, on } from './events';
-
-// ── Autocomplete token detection ──────────────────────────────────────────────
-
-interface ActiveToken {
-    type: 'tag' | 'field';
-    field: string;
-    partial: string;
-    start: number;
-    end: number;
-}
-
-const COMPLETABLE_FIELDS = new Set(['status', 'area', 'author', 'type', 'due', 'rating', 'tag']);
-
-function getActiveToken(el: HTMLInputElement): ActiveToken | null {
-    const pos = el.selectionStart ?? el.value.length;
-    const val = el.value;
-    let s = pos;
-    while (s > 0 && val[s - 1] !== ' ') s--;
-    let e = pos;
-    while (e < val.length && val[e] !== ' ') e++;
-    const tok = val.slice(s, e);
-    if (!tok || tok === 'AND' || tok === 'OR' || tok === 'NOT') return null;
-    if (tok.startsWith('#')) {
-        return { type: 'tag', field: 'tag', partial: tok.slice(1), start: s, end: e };
-    }
-    const ci = tok.indexOf(':');
-    if (ci > 0) {
-        const field = tok.slice(0, ci).toLowerCase();
-        if (COMPLETABLE_FIELDS.has(field)) {
-            return { type: 'field', field, partial: tok.slice(ci + 1), start: s, end: e };
-        }
-    }
-    return null;
-}
-
-// ── Print directive ───────────────────────────────────────────────────────────
-
-interface PrintSpec {
-    fields: string[];
-}
-
-// Matches "print field1 field2" at the end — only valid field names, so "order by" isn't captured.
-const PRINT_FIELDS_PAT = '(?:name|path|title|tags|date|status|area|author|due|rating|url)';
-const PRINT_RE = new RegExp(`\\bprint\\s+(${PRINT_FIELDS_PAT}(?:[\\s,]+${PRINT_FIELDS_PAT})*)\\s*$`, 'i');
-
-function parsePrint(q: string): { cleanQuery: string; print: PrintSpec | null } {
-    const m = q.match(PRINT_RE);
-    if (!m) return { cleanQuery: q, print: null };
-    const fields = m[1].split(/[\s,]+/).filter(Boolean).map(f => f.toLowerCase());
-    return {
-        cleanQuery: q.slice(0, m.index).trim(),
-        print: fields.length ? { fields } : null,
-    };
-}
-
-const PRINT_FIELDS = new Set(['name', 'path', 'title', 'tags', 'date', 'status', 'area', 'author', 'due', 'rating', 'url']);
-
-function getFieldText(field: string, row: NoteQueryResult): string {
-    switch (field) {
-        case 'name':   return row.name.split('/').pop() ?? row.name;
-        case 'path':   return row.name;
-        case 'title':  return row.title || row.name;
-        case 'tags':   return row.tags.join(', ');
-        case 'date':   return row.date ?? '';
-        case 'status': return row.status ?? '';
-        case 'area':   return row.area ?? '';
-        case 'author': return row.author ?? '';
-        case 'due':    return row.due ?? '';
-        case 'rating': return row.rating != null ? String(row.rating) : '';
-        case 'url':    return row.url ?? '';
-        default:       return '';
-    }
-}
-
-// ── SVG icons ─────────────────────────────────────────────────────────────────
-
-const ICON_LOCKED = `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="10" height="8" rx="1.5"/><path d="M5 7V5a3 3 0 0 1 6 0v2"/></svg>`;
-const ICON_UNLOCKED = `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="10" height="8" rx="1.5"/><path d="M5 7V5a3 3 0 0 1 5.83 1"/></svg>`;
+import { on } from './events';
+import {
+    getActiveToken, parsePrint, ICON_LOCKED, ICON_UNLOCKED,
+    type ActiveToken, type PrintSpec,
+} from './queryBlockHelpers';
+import { makeLink, appendResultRows, buildTagCloud, buildTagCountCloud } from './queryBlockDom';
 
 // ── Node ──────────────────────────────────────────────────────────────────────
 
@@ -118,7 +45,6 @@ export const QueryBlock = Node.create({
     addKeyboardShortcuts() {
         return {
             // Prevent accidental deletion when ProseMirror has a NodeSelection on this block.
-            // The user can still delete it intentionally by clearing the input and pressing Backspace.
             'Backspace': () => {
                 const { selection } = this.editor.state;
                 return selection instanceof NodeSelection && selection.node.type.name === 'queryBlock';
@@ -209,13 +135,12 @@ export const QueryBlock = Node.create({
 
             applyLocked(node.attrs.locked ?? false);
 
-            // Intercept mousedown so ProseMirror never steals focus from the input.
             dom.addEventListener('mousedown', (e) => {
                 const target = e.target as HTMLElement;
                 if (target === input) {
-                    e.stopPropagation(); // let the browser focus the input naturally
+                    e.stopPropagation();
                 } else if (!target.closest('button')) {
-                    e.preventDefault(); // prevent PM from creating a NodeSelection
+                    e.preventDefault();
                     input.focus();
                 }
             });
@@ -265,17 +190,6 @@ export const QueryBlock = Node.create({
                 }
             }
 
-            function makeLink(text: string, row: NoteQueryResult): HTMLButtonElement {
-                const btn = document.createElement('button');
-                btn.type = 'button';
-                btn.className = 'query-result-name';
-                btn.textContent = text;
-                btn.addEventListener('click', () => {
-                    emit(document, 'wiki-navigate', row.name);
-                });
-                return btn;
-            }
-
             // ── Autocomplete ─────────────────────────────────────────────────
             let acSuggestions: string[] = [];
             let acIndex = -1;
@@ -295,21 +209,14 @@ export const QueryBlock = Node.create({
                 results.innerHTML = '';
                 countEl.textContent = acRows.length ? `${acRows.length}` : '';
                 if (acSuggestions.length > 0 && acToken) {
-                    const cloud = document.createElement('div');
-                    cloud.className = 'query-tag-cloud' + (acRows.length ? ' query-field-cloud' : '');
-                    acSuggestions.forEach((item, i) => {
-                        const chip = document.createElement('button');
-                        chip.className = 'query-tag-chip' + (i === acIndex ? ' active' : '');
-                        const label = document.createElement('span');
-                        label.className = 'query-tag-name';
-                        label.textContent = acToken!.type === 'tag' ? `#${item}` : item;
-                        chip.appendChild(label);
-                        chip.addEventListener('mousedown', (e) => {
-                            e.preventDefault();
-                            applySuggestion(item);
-                        });
-                        cloud.appendChild(chip);
-                    });
+                    const tagCounts: TagCount[] = acSuggestions.map(s => ({ tag: s, count: 0 }));
+                    const cloud = buildTagCloud(
+                        tagCounts,
+                        (tag) => applySuggestion(tag),
+                        acIndex,
+                        acRows.length > 0,
+                        acToken.type === 'tag' ? '#' : '',
+                    );
                     results.appendChild(cloud);
                 }
                 if (acRows.length > 0) appendResultRows(results, acRows, currentPrint);
@@ -442,95 +349,21 @@ export const QueryBlock = Node.create({
                     results.innerHTML = '<span class="query-empty">No tags found</span>';
                     return;
                 }
-                const cloud = document.createElement('div');
-                cloud.className = 'query-tag-cloud';
-                tags.forEach(({ tag, count }) => {
-                    const chip = document.createElement('button');
-                    chip.className = 'query-tag-chip';
-                    const tagNameEl = document.createElement('span');
-                    tagNameEl.className = 'query-tag-name';
-                    tagNameEl.textContent = tag;
-                    const tagCountEl = document.createElement('span');
-                    tagCountEl.className = 'query-tag-count';
-                    tagCountEl.textContent = String(count);
-                    chip.append(tagNameEl, tagCountEl);
-                    chip.addEventListener('click', () => {
-                        const newQ = `#${tag}`;
-                        input.value = newQ;
-                        const pos = getPos();
-                        if (typeof pos === 'number') {
-                            editor.view.dispatch(
-                                editor.view.state.tr.setNodeMarkup(pos, undefined, {
-                                    ...currentNode.attrs,
-                                    query: newQ,
-                                })
-                            );
-                        }
-                        fetchResults(newQ);
-                    });
-                    cloud.appendChild(chip);
+                const cloud = buildTagCountCloud(tags, (tag) => {
+                    const newQ = `#${tag}`;
+                    input.value = newQ;
+                    const pos = getPos();
+                    if (typeof pos === 'number') {
+                        editor.view.dispatch(
+                            editor.view.state.tr.setNodeMarkup(pos, undefined, {
+                                ...currentNode.attrs,
+                                query: newQ,
+                            })
+                        );
+                    }
+                    fetchResults(newQ);
                 });
                 results.appendChild(cloud);
-            }
-
-            function appendResultRows(container: HTMLElement, rows: NoteQueryResult[], print: PrintSpec | null) {
-                if (!rows.length) {
-                    const empty = document.createElement('span');
-                    empty.className = 'query-empty';
-                    empty.textContent = 'No results';
-                    container.appendChild(empty);
-                    return;
-                }
-                rows.forEach((row) => {
-                    const item = document.createElement('div');
-                    item.className = 'query-result-item';
-
-                    if (print) {
-                        let hasLink = false;
-                        print.fields.forEach((field) => {
-                            const isLink = field === 'name' || field === 'path' || field === 'title';
-                            if (isLink) {
-                                const text = field === 'title' ? (row.title || row.name) : field === 'path' ? row.name : (row.name.split('/').pop() ?? row.name);
-                                item.appendChild(makeLink(text, row));
-                                hasLink = true;
-                            } else if (PRINT_FIELDS.has(field)) {
-                                const text = getFieldText(field, row);
-                                if (text) {
-                                    const span = document.createElement('span');
-                                    span.className = 'query-result-meta';
-                                    span.textContent = text;
-                                    item.appendChild(span);
-                                }
-                            }
-                        });
-                        // If no navigable field was requested, make the row itself a link
-                        if (!hasLink) {
-                            const btn = makeLink(getFieldText(print.fields[0], row) || row.name, row);
-                            btn.className = 'query-result-name';
-                            item.prepend(btn);
-                        }
-                    } else {
-                        item.appendChild(makeLink(row.title || row.name, row));
-                        if (row.title && row.title !== row.name) {
-                            const pathEl = document.createElement('span');
-                            pathEl.className = 'query-result-path';
-                            pathEl.textContent = row.name;
-                            item.appendChild(pathEl);
-                        }
-                        const metaParts: string[] = [];
-                        if (row.tags.length) metaParts.push(row.tags.join(', '));
-                        if (row.date) metaParts.push(row.date);
-                        if (row.status) metaParts.push(row.status);
-                        if (metaParts.length) {
-                            const meta = document.createElement('span');
-                            meta.className = 'query-result-meta';
-                            meta.textContent = metaParts.join(' · ');
-                            item.appendChild(meta);
-                        }
-                    }
-
-                    container.appendChild(item);
-                });
             }
 
             function renderResults(rows: NoteQueryResult[], print: PrintSpec | null) {
@@ -581,8 +414,6 @@ export const QueryBlock = Node.create({
             return {
                 dom,
                 selectNode() {
-                    // setTimeout: ProseMirror calls view.focus() after selectNode(),
-                    // which would steal focus back from the input without this delay.
                     setTimeout(() => input.focus(), 0);
                 },
                 update(updatedNode) {
