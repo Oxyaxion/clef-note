@@ -1,3 +1,5 @@
+import { storage } from './storage';
+
 export const THEMES = [
     { id: 'default',     label: 'Default' },
     { id: 'rose-pine',   label: 'Rosé Pine' },
@@ -9,10 +11,8 @@ export const THEMES = [
 
 export type ThemeId = typeof THEMES[number]['id'];
 
-const KEY = 'clef-theme';
-
 export function loadTheme(): ThemeId {
-    return (localStorage.getItem(KEY) as ThemeId) ?? 'default';
+    return (storage.theme.get() as ThemeId) ?? 'default';
 }
 
 export function applyTheme(id: ThemeId) {
@@ -21,5 +21,5 @@ export function applyTheme(id: ThemeId) {
     } else {
         document.documentElement.setAttribute('data-theme', id);
     }
-    localStorage.setItem(KEY, id);
+    storage.theme.set(id);
 }

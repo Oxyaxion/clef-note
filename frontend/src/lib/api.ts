@@ -1,20 +1,14 @@
 import { emit } from './events';
 import type { AppSettings } from './settings';
+import { storage } from './storage';
 
 const BASE = import.meta.env.VITE_API_BASE ?? '';
 
-const TOKEN_KEY = 'clef_token';
-
-export const session = {
-    get: (): string => localStorage.getItem(TOKEN_KEY) ?? '',
-    set: (t: string) => localStorage.setItem(TOKEN_KEY, t),
-    clear: () => localStorage.removeItem(TOKEN_KEY),
-    exists: (): boolean => !!localStorage.getItem(TOKEN_KEY),
-};
+export const session = storage.token;
 
 function authHeaders(extra?: Record<string, string>): Record<string, string> {
     const h: Record<string, string> = { ...extra };
-    const token = session.get();
+    const token = storage.token.get();
     if (token) h['Authorization'] = `Bearer ${token}`;
     return h;
 }
@@ -276,12 +270,12 @@ export async function login(password: string): Promise<void> {
     if (res.status === 401) throw new Error('Wrong password');
     if (!res.ok) throw new Error('Login failed');
     const data = await res.json();
-    session.set(data.token);
+    storage.token.set(data.token);
 }
 
 export async function logout(): Promise<void> {
     await apiFetch(`${BASE}/auth/logout`, { method: 'POST', headers: authHeaders() });
-    session.clear();
+    storage.token.clear();
 }
 
 // ── Key management ────────────────────────────────────────────────────────────
