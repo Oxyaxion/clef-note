@@ -1,109 +1,11 @@
 <script lang="ts">
-	import { onMount, onDestroy, tick } from 'svelte';
-	import { Editor, InputRule } from '@tiptap/core';
+	import { onMount, onDestroy } from 'svelte';
+	import { Editor, Extension, InputRule } from '@tiptap/core';
 	import StarterKit from '@tiptap/starter-kit';
 	import Placeholder from '@tiptap/extension-placeholder';
-	import Image from '@tiptap/extension-image';
 	import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table';
 	import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 	import { createLowlight, common } from 'lowlight';
-
-	const lowlight = createLowlight(common);
-
-	function makeCodeBlockNodeView() {
-		return ({ node, getPos, editor: ed }: { node: any; getPos: any; editor: any }) => {
-			const dom = document.createElement('div');
-			dom.className = 'code-block-wrap';
-
-			const header = document.createElement('div');
-			header.className = 'code-block-header';
-
-			// ── Language label (click to edit) ──────────────────
-			const langSpan = document.createElement('span');
-			langSpan.className = 'code-lang';
-			langSpan.title = 'Click to change language';
-			langSpan.textContent = node.attrs.language || 'text';
-
-			langSpan.addEventListener('mousedown', (e) => e.preventDefault());
-			langSpan.addEventListener('click', () => {
-				const input = document.createElement('input');
-				input.value = langSpan.textContent === 'text' ? '' : (langSpan.textContent ?? '');
-				input.placeholder = 'ex: typescript';
-				input.className = 'code-lang-input';
-				input.spellcheck = false;
-
-				let discarding = false;
-
-				const applyLang = () => {
-					if (discarding) return;
-					const newLang = input.value.trim().toLowerCase();
-					const pos = typeof getPos === 'function' ? getPos() : undefined;
-					if (pos !== undefined) {
-						// Use setNodeMarkup by position — updateAttributes relies on
-						// the current selection which may have moved when blur fires.
-						ed.view.dispatch(
-							ed.view.state.tr.setNodeMarkup(pos, undefined, { language: newLang || null })
-						);
-					}
-					if (header.contains(input)) header.replaceChild(langSpan, input);
-				};
-
-				input.addEventListener('mousedown', (e) => e.stopPropagation());
-				input.addEventListener('blur', applyLang);
-				input.addEventListener('keydown', (e) => {
-					if (e.key === 'Enter')  { e.preventDefault(); input.blur(); }
-					if (e.key === 'Escape') { discarding = true; header.replaceChild(langSpan, input); }
-					e.stopPropagation();
-				});
-
-				header.replaceChild(input, langSpan);
-				input.focus();
-				input.select();
-			});
-
-			// ── Copy button ──────────────────────────────────────
-			const copyBtn = document.createElement('button');
-			copyBtn.className = 'code-copy-btn';
-			copyBtn.textContent = 'Copy';
-			copyBtn.addEventListener('mousedown', (e) => e.preventDefault());
-			copyBtn.addEventListener('click', () => {
-				navigator.clipboard.writeText(codeEl.innerText ?? '');
-				copyBtn.textContent = '✓ Copied';
-				setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1500);
-			});
-
-			header.appendChild(langSpan);
-			header.appendChild(copyBtn);
-
-			const pre = document.createElement('pre');
-			const codeEl = document.createElement('code');
-			codeEl.className = node.attrs.language ? `language-${node.attrs.language}` : '';
-			pre.appendChild(codeEl);
-
-			dom.appendChild(header);
-			dom.appendChild(pre);
-
-			return {
-				dom,
-				contentDOM: codeEl,
-				stopEvent(event: Event) {
-					return header.contains(event.target as Node);
-				},
-				ignoreMutation(mutation: { target: Node }) {
-					return !codeEl.contains(mutation.target);
-				},
-				update(updatedNode: any) {
-					if (updatedNode.type.name !== 'codeBlock') return false;
-					const lang = updatedNode.attrs.language || '';
-					if (!header.contains(document.activeElement)) {
-						langSpan.textContent = lang || 'text';
-					}
-					codeEl.className = lang ? `language-${lang}` : '';
-					return true;
-				},
-			};
-		};
-	}
 	import Typography from '@tiptap/extension-typography';
 	import Link from '@tiptap/extension-link';
 	import { Markdown, type MarkdownStorage } from 'tiptap-markdown';
@@ -115,123 +17,14 @@
 	import { EmojiShortcodes } from './emojiShortcodes';
 	import { QueryBlock } from './queryBlock';
 	import { DrawingBlock } from './drawingBlock';
-	import { Extension } from '@tiptap/core';
+	import { makeCodeBlockNodeView } from './codeBlockNodeView';
+	import { ResizableImage } from './resizableImage';
 	import BubbleMenu from './BubbleMenu.svelte';
+	import LinkPrompt from './LinkPrompt.svelte';
+	import TableToolbar from './TableToolbar.svelte';
 	import 'tippy.js/dist/tippy.css';
 
-	// ── Resizable image NodeView ───────────────────────────────────────────────
-	const ResizableImage = Image.extend({
-		addAttributes() {
-			return {
-				...this.parent?.(),
-				width: {
-					default: null,
-					parseHTML: (el) => {
-						const w = (el as HTMLElement).getAttribute('data-width')
-						       ?? (el as HTMLElement).getAttribute('width');
-						return w ? parseInt(w, 10) || null : null;
-					},
-					renderHTML: (attrs) => attrs.width ? { 'data-width': String(attrs.width) } : {},
-				},
-			};
-		},
-
-		addNodeView() {
-			return ({ node, getPos, editor: ed }) => {
-				let currentNode = node;
-
-				const wrapper = document.createElement('span');
-				wrapper.className = 'image-wrapper';
-				wrapper.setAttribute('contenteditable', 'false');
-
-				const img = document.createElement('img');
-				img.src = node.attrs.src ?? '';
-				img.alt = node.attrs.alt ?? '';
-				if (node.attrs.width) img.style.width = `${node.attrs.width}px`;
-
-				const handle = document.createElement('div');
-				handle.className = 'image-resize-handle';
-				handle.title = 'Drag to resize';
-
-				handle.addEventListener('mousedown', (e) => {
-					e.preventDefault();
-					e.stopPropagation();
-					const startX = e.clientX;
-					const startWidth = img.getBoundingClientRect().width;
-
-					const onMove = (ev: MouseEvent) => {
-						const newW = Math.max(40, startWidth + ev.clientX - startX);
-						img.style.width = `${newW}px`;
-					};
-					const onUp = (ev: MouseEvent) => {
-						document.removeEventListener('mousemove', onMove);
-						document.removeEventListener('mouseup', onUp);
-						const newW = Math.max(40, Math.round(startWidth + ev.clientX - startX));
-						const pos = getPos();
-						if (typeof pos === 'number') {
-							ed.view.dispatch(
-								ed.view.state.tr.setNodeMarkup(pos, undefined, {
-									...currentNode.attrs,
-									width: newW,
-								})
-							);
-						}
-					};
-					document.addEventListener('mousemove', onMove);
-					document.addEventListener('mouseup', onUp);
-				});
-
-				wrapper.append(img, handle);
-
-				return {
-					dom: wrapper,
-					update(updatedNode) {
-						if (updatedNode.type.name !== 'image') return false;
-						currentNode = updatedNode;
-						img.src = updatedNode.attrs.src ?? '';
-						img.alt = updatedNode.attrs.alt ?? '';
-						img.style.width = updatedNode.attrs.width ? `${updatedNode.attrs.width}px` : '';
-						return true;
-					},
-					destroy() {},
-				};
-			};
-		},
-
-		addStorage() {
-			return {
-				markdown: {
-					serialize(state: any, node: any) {
-						const alt = (node.attrs.alt ?? '').replace(/[\[\]]/g, '\\$&');
-						const src = node.attrs.src ?? '';
-						const width = node.attrs.width;
-						if (width) {
-							state.write(`![${alt}](${src} "w:${width}")`);
-						} else if (node.attrs.title) {
-							state.write(`![${alt}](${src} "${node.attrs.title}")`);
-						} else {
-							state.write(`![${alt}](${src})`);
-						}
-					},
-					parse: {
-						// Convert title="w:NNN" → data-width="NNN" before TipTap parses the DOM
-						updateDOM(element: Element) {
-							element.querySelectorAll('img[title]').forEach((el) => {
-								const t = el.getAttribute('title') ?? '';
-								if (t.startsWith('w:')) {
-									const w = parseInt(t.slice(2), 10);
-									if (!isNaN(w)) {
-										el.setAttribute('data-width', String(w));
-										el.removeAttribute('title');
-									}
-								}
-							});
-						},
-					},
-				},
-			};
-		},
-	});
+	const lowlight = createLowlight(common);
 
 	const ExitBlockquote = Extension.create({
 		name: 'exitBlockquote',
@@ -299,104 +92,9 @@
 	let isUpdatingFromProp = false;
 	let aliasMap: Record<string, string> = {}; // plain let — read lazily in closure, not in template
 
-	// ── Table toolbar ──────────────────────────────────────────────────────────
-	let tableActive = $state(false);
-	let toolbarStyle = $state('');
-
-	// ── Link prompt ────────────────────────────────────────────────────────────
-	let linkPromptOpen = $state(false);
-	let linkPromptX = $state(0);
-	let linkPromptY = $state(0);
-	let linkPromptUrl = $state('');
-	let linkPromptText = $state('');
-	let linkHasSelection = $state(false);
-	let linkHasExisting = $state(false);
-	let linkUrlInput = $state<HTMLInputElement | null>(null);
-	let linkTextInput = $state<HTMLInputElement | null>(null);
-
-	function applyLink() {
-		if (!editor) return;
-		linkPromptOpen = false;
-		const url = linkPromptUrl.trim();
-		if (!url) {
-			if (linkHasExisting) editor.chain().focus().unsetLink().run();
-			else editor.chain().focus().run();
-			return;
-		}
-		const href = /^https?:\/\//.test(url) ? url : `https://${url}`;
-		if (linkHasSelection) {
-			editor.chain().focus().setLink({ href }).run();
-		} else if (linkHasExisting) {
-			// Cursor inside an existing link — update the whole link span
-			editor.chain().focus().extendMarkRange('link').setLink({ href }).run();
-		} else {
-			const label = linkPromptText.trim() || href;
-			editor.chain().focus().insertContent({ type: 'text', text: label, marks: [{ type: 'link', attrs: { href } }] }).run();
-		}
-	}
-
-	function removeLink() {
-		if (!editor) return;
-		linkPromptOpen = false;
-		if (linkHasSelection) {
-			editor.chain().focus().unsetLink().run();
-		} else {
-			editor.chain().focus().extendMarkRange('link').unsetLink().run();
-		}
-	}
-
-	// ── Link tooltip (shown when cursor rests inside a link) ───────────────────
-	let linkTooltipOpen = $state(false);
-	let linkTooltipX = $state(0);
-	let linkTooltipY = $state(0);
-	let linkTooltipHref = $state('');
-
-	function syncLinkTooltip() {
-		if (!editor) return;
-		const { from, empty } = editor.state.selection;
-		if (!empty || !editor.isActive('link')) {
-			linkTooltipOpen = false;
-			return;
-		}
-		// Find the <a> element in the DOM to anchor the tooltip to the full link span
-		const { node } = editor.view.domAtPos(from);
-		let el: Node | null = node instanceof Text ? node.parentElement : node;
-		while (el && !(el instanceof HTMLAnchorElement)) el = (el as Element).parentElement;
-		if (el instanceof HTMLAnchorElement) {
-			const rect = el.getBoundingClientRect();
-			linkTooltipX = rect.left;
-			linkTooltipY = rect.bottom + 4;
-		} else {
-			const coords = editor.view.coordsAtPos(from);
-			linkTooltipX = coords.left;
-			linkTooltipY = coords.bottom + 4;
-		}
-		linkTooltipHref = editor.getAttributes('link').href ?? '';
-		linkTooltipOpen = true;
-	}
-
 	// DOM-level handlers stored here so onDestroy can remove them
 	let _imgPasteHandler: ((e: ClipboardEvent) => void) | null = null;
 	let _imgDropHandler: ((e: DragEvent) => void) | null = null;
-
-	function syncTableToolbar() {
-		if (!editor?.isActive('table')) {
-			tableActive = false;
-			return;
-		}
-		// Walk up from selection anchor to find the <table> DOM node
-		const sel = window.getSelection();
-		if (!sel || sel.rangeCount === 0) return;
-		let el: Node | null = sel.getRangeAt(0).commonAncestorContainer;
-		if (el.nodeType === Node.TEXT_NODE) el = el.parentElement;
-		while (el && (el as Element).tagName !== 'TABLE') el = (el as Element).parentElement;
-		if (!el) return;
-
-		const rect = (el as Element).getBoundingClientRect();
-		tableActive = true;
-		const top = Math.max(4, rect.top - 38);
-		toolbarStyle = `top:${top}px;left:${rect.left}px;width:${rect.width}px`;
-	}
 
 	function getMarkdown(ed: Editor): string {
 		return (ed.storage as unknown as { markdown: MarkdownStorage }).markdown.getMarkdown();
@@ -499,12 +197,7 @@
 			},
 		});
 
-		editor.on('selectionUpdate', () => { syncTableToolbar(); syncLinkTooltip(); });
-		// Defer to avoid mutating $state during Svelte's synchronous commit phase
-		// (blur fires when Svelte tears down the toolbar DOM, which triggers state_unsafe_mutation)
-		editor.on('blur', () => { setTimeout(() => { tableActive = false; linkTooltipOpen = false; }, 0); });
 		document.addEventListener('insert-image', onInsertImageEvent);
-		element.addEventListener('link-prompt', onLinkPromptEvent);
 
 		// Capture-phase listeners run before ProseMirror sees the event.
 		// Return early (without stopImmediatePropagation) for non-image pastes so
@@ -555,24 +248,8 @@
 		editor.setEditable(!isLocked);
 	});
 
-	async function onLinkPromptEvent(e: Event) {
-		linkTooltipOpen = false;
-		const { x, y, currentUrl, selectedText } = (e as CustomEvent).detail;
-		linkPromptUrl = currentUrl ?? '';
-		linkPromptText = '';
-		linkHasExisting = !!currentUrl;
-		linkHasSelection = !!selectedText;
-		linkPromptX = x;
-		linkPromptY = y;
-		linkPromptOpen = true;
-		await tick();
-		linkUrlInput?.focus();
-		linkUrlInput?.select();
-	}
-
 	onDestroy(() => {
 		document.removeEventListener('insert-image', onInsertImageEvent);
-		element?.removeEventListener('link-prompt', onLinkPromptEvent);
 		if (_imgPasteHandler) element.removeEventListener('paste', _imgPasteHandler as EventListener, true);
 		if (_imgDropHandler) element.removeEventListener('drop', _imgDropHandler as EventListener, true);
 		editor?.destroy();
@@ -585,112 +262,8 @@
 
 {#if editorReady && editor}
 	<BubbleMenu {editor} />
-{/if}
-
-{#if linkTooltipOpen}
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="link-tooltip" style="left:{linkTooltipX}px;top:{linkTooltipY}px;" onmousedown={(e) => e.preventDefault()}>
-		<span class="lt-url" title={linkTooltipHref}>
-			{linkTooltipHref.length > 40 ? linkTooltipHref.slice(0, 40) + '…' : linkTooltipHref}
-		</span>
-		<span class="lt-sep"></span>
-		<button onclick={() => window.open(linkTooltipHref, '_blank', 'noopener noreferrer')} title="Open">↗</button>
-		<button onmousedown={(e) => {
-			e.preventDefault();
-			linkTooltipOpen = false;
-			const { from } = editor!.state.selection;
-			const coords = editor!.view.coordsAtPos(from);
-			editor!.view.dom.dispatchEvent(new CustomEvent('link-prompt', {
-				bubbles: true,
-				detail: { x: coords.left, y: coords.bottom + 8, currentUrl: linkTooltipHref, selectedText: '' },
-			}));
-		}} title="Edit">Edit</button>
-		<button onmousedown={(e) => {
-			e.preventDefault();
-			editor!.chain().focus().extendMarkRange('link').unsetLink().run();
-			linkTooltipOpen = false;
-		}} title="Remove" class="lt-remove">×</button>
-	</div>
-{/if}
-
-{#if linkPromptOpen}
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
-	<div class="link-backdrop" onmousedown={() => { linkPromptOpen = false; editor?.chain().focus().run(); }}></div>
-	<div class="link-prompt" style="left:{linkPromptX}px; top:{linkPromptY}px;">
-		<input
-			bind:this={linkUrlInput}
-			bind:value={linkPromptUrl}
-			type="url"
-			placeholder="https://…"
-			autocomplete="off"
-			spellcheck={false}
-			onkeydown={(e) => {
-				if (e.key === 'Enter') { e.preventDefault(); linkHasSelection ? applyLink() : linkTextInput?.focus(); }
-				if (e.key === 'Escape') { linkPromptOpen = false; editor?.chain().focus().run(); }
-			}}
-		/>
-		{#if !linkHasSelection}
-			<input
-				bind:this={linkTextInput}
-				bind:value={linkPromptText}
-				type="text"
-				placeholder="Display text (optional)"
-				autocomplete="off"
-				spellcheck={false}
-				onkeydown={(e) => {
-					if (e.key === 'Enter') { e.preventDefault(); applyLink(); }
-					if (e.key === 'Escape') { linkPromptOpen = false; editor?.chain().focus().run(); }
-				}}
-			/>
-		{/if}
-		<div class="lp-actions">
-			<button class="lp-apply" onmousedown={(e) => { e.preventDefault(); applyLink(); }}>Ajouter</button>
-			{#if linkHasExisting}
-				<button class="lp-remove" onmousedown={(e) => { e.preventDefault(); removeLink(); }}>Supprimer</button>
-			{/if}
-		</div>
-	</div>
-{/if}
-
-{#if tableActive && editorReady}
-	<div class="table-toolbar" role="toolbar" tabindex="-1" aria-label="Table actions" style={toolbarStyle} onmousedown={(e) => e.preventDefault()}>
-		<span class="tb-group">
-			<button onclick={() => editor!.chain().focus().addColumnBefore().run()} title="Add column before">
-				<svg viewBox="0 0 16 16" fill="none"><rect x="1" y="3" width="4" height="10" rx="1" stroke="currentColor" stroke-width="1.2"/><path d="M9 8h6M12 5v6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
-				Col ←
-			</button>
-			<button onclick={() => editor!.chain().focus().addColumnAfter().run()} title="Add column after">
-				Col →
-				<svg viewBox="0 0 16 16" fill="none"><rect x="11" y="3" width="4" height="10" rx="1" stroke="currentColor" stroke-width="1.2"/><path d="M1 8h6M4 5v6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
-			</button>
-		</span>
-		<span class="tb-sep"></span>
-		<span class="tb-group">
-			<button onclick={() => editor!.chain().focus().addRowBefore().run()} title="Add row above">
-				<svg viewBox="0 0 16 16" fill="none"><rect x="3" y="1" width="10" height="4" rx="1" stroke="currentColor" stroke-width="1.2"/><path d="M8 9v6M5 12h6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
-				Row ↑
-			</button>
-			<button onclick={() => editor!.chain().focus().addRowAfter().run()} title="Add row below">
-				Row ↓
-				<svg viewBox="0 0 16 16" fill="none"><rect x="3" y="11" width="10" height="4" rx="1" stroke="currentColor" stroke-width="1.2"/><path d="M8 1v6M5 4h6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
-			</button>
-		</span>
-		<span class="tb-sep"></span>
-		<span class="tb-group">
-			<button class="danger" onclick={() => editor!.chain().focus().deleteColumn().run()} title="Delete column">
-				<svg viewBox="0 0 16 16" fill="none"><rect x="3" y="3" width="10" height="10" rx="1" stroke="currentColor" stroke-width="1.2"/><path d="M8 6v4M6 8h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" transform="rotate(45 8 8)"/></svg>
-				Col
-			</button>
-			<button class="danger" onclick={() => editor!.chain().focus().deleteRow().run()} title="Delete row">
-				<svg viewBox="0 0 16 16" fill="none"><rect x="3" y="3" width="10" height="10" rx="1" stroke="currentColor" stroke-width="1.2"/><path d="M8 6v4M6 8h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" transform="rotate(45 8 8)"/></svg>
-				Row
-			</button>
-			<button class="danger" onclick={() => editor!.chain().focus().deleteTable().run()} title="Delete table">
-				<svg viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h12M2 12h12M4 2v12M8 2v12M12 2v12" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity=".4"/><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-				Table
-			</button>
-		</span>
-	</div>
+	<LinkPrompt {editor} />
+	<TableToolbar {editor} />
 {/if}
 
 <style>
@@ -757,118 +330,6 @@
 	}
 	:global(.tiptap-editor a:hover) { opacity: 0.8; }
 
-	/* Link tooltip */
-	.link-tooltip {
-		position: fixed;
-		z-index: 200;
-		display: flex;
-		align-items: center;
-		gap: 2px;
-		padding: 3px 6px;
-		background: var(--bg);
-		border: 1px solid var(--border);
-		border-radius: 6px;
-		box-shadow: 0 3px 12px rgba(0, 0, 0, 0.12);
-		font-size: 0.75rem;
-		white-space: nowrap;
-		max-width: 380px;
-	}
-
-	.lt-url {
-		color: var(--muted);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		max-width: 200px;
-		display: inline-block;
-	}
-
-	.lt-sep {
-		width: 1px;
-		height: 14px;
-		background: var(--border);
-		flex-shrink: 0;
-		margin: 0 3px;
-	}
-
-	.link-tooltip button {
-		border: none;
-		background: none;
-		color: var(--text);
-		cursor: pointer;
-		padding: 2px 5px;
-		border-radius: 4px;
-		font-size: 0.75rem;
-		font-family: inherit;
-	}
-
-	.link-tooltip button:hover { background: var(--sidebar-bg); }
-	.link-tooltip button.lt-remove { color: var(--color-danger); }
-	.link-tooltip button.lt-remove:hover { background: color-mix(in srgb, var(--color-danger) 10%, transparent); }
-
-	/* Link prompt */
-	.link-backdrop {
-		position: fixed;
-		inset: 0;
-		z-index: 299;
-	}
-
-	.link-prompt {
-		position: fixed;
-		z-index: 300;
-		display: flex;
-		flex-direction: column;
-		gap: 0.3rem;
-		background: var(--bg);
-		border: 1px solid var(--border);
-		border-radius: 8px;
-		padding: 0.5rem;
-		box-shadow: 0 4px 20px rgba(0,0,0,0.14);
-		min-width: 280px;
-	}
-
-	.link-prompt input {
-		background: var(--sidebar-bg);
-		border: 1px solid var(--border);
-		border-radius: 5px;
-		padding: 0.28rem 0.55rem;
-		font-size: 0.83rem;
-		color: var(--text);
-		font-family: inherit;
-		outline: none;
-		width: 100%;
-	}
-
-	.link-prompt input:focus { border-color: var(--accent); }
-
-	.lp-actions {
-		display: flex;
-		gap: 0.3rem;
-	}
-
-	.lp-apply, .lp-remove {
-		border-radius: 5px;
-		padding: 0.22rem 0.7rem;
-		font-size: 0.78rem;
-		font-family: inherit;
-		cursor: pointer;
-		white-space: nowrap;
-		border: 1px solid var(--border);
-	}
-
-	.lp-apply {
-		background: var(--accent);
-		border-color: var(--accent);
-		color: #fff;
-	}
-
-	.lp-apply:hover { opacity: 0.88; }
-
-	.lp-remove {
-		background: none;
-		color: var(--color-danger);
-	}
-
-	.lp-remove:hover { background: color-mix(in srgb, var(--color-danger) 10%, transparent); }
 	:global(.tiptap-editor p.is-editor-empty:first-child::before) {
 		content: attr(data-placeholder);
 		float: left;
@@ -1087,69 +548,6 @@
 
 	/* Horizontal rule */
 	:global(.tiptap-editor hr) { border: none; border-top: 1px solid var(--border); margin: 1.5rem 0; }
-
-	/* Table toolbar */
-	:global(.table-toolbar) {
-		position: fixed;
-		z-index: 50;
-		display: flex;
-		align-items: center;
-		gap: 2px;
-		background: var(--bg);
-		border: 1px solid var(--border);
-		border-radius: 8px;
-		padding: 3px 5px;
-		box-shadow: 0 4px 16px rgba(0,0,0,0.12);
-		font-size: 0.72rem;
-		white-space: nowrap;
-		overflow-x: auto;
-	}
-
-	.table-toolbar button {
-		display: flex;
-		align-items: center;
-		gap: 3px;
-		background: none;
-		border: none;
-		cursor: pointer;
-		color: var(--muted);
-		font-size: 0.72rem;
-		font-family: inherit;
-		padding: 3px 6px;
-		border-radius: 5px;
-		transition: background 80ms, color 80ms;
-		white-space: nowrap;
-	}
-
-	.table-toolbar button svg {
-		width: 12px;
-		height: 12px;
-		flex-shrink: 0;
-	}
-
-	.table-toolbar button:hover {
-		background: var(--border);
-		color: var(--text);
-	}
-
-	.table-toolbar button.danger:hover {
-		background: color-mix(in srgb, var(--color-danger) 15%, transparent);
-		color: var(--color-danger);
-	}
-
-	.tb-sep {
-		width: 1px;
-		height: 16px;
-		background: var(--border);
-		flex-shrink: 0;
-		margin: 0 2px;
-	}
-
-	.tb-group {
-		display: flex;
-		align-items: center;
-		gap: 1px;
-	}
 
 	/* Slash & wiki-link menus */
 	:global(.slash-menu) {

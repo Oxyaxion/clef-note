@@ -29,12 +29,12 @@
 	let filterQuery = $state('');
 	let filterInput = $state<HTMLInputElement | null>(null);
 	let collapsed = $state(
-		typeof localStorage !== 'undefined' && localStorage.getItem('aura-sidebar-collapsed') === 'true'
+		typeof localStorage !== 'undefined' && localStorage.getItem('clef-sidebar-collapsed') === 'true'
 	);
 
 	function toggleCollapse() {
 		collapsed = !collapsed;
-		localStorage.setItem('aura-sidebar-collapsed', String(collapsed));
+		localStorage.setItem('clef-sidebar-collapsed', String(collapsed));
 	}
 
 	// ── Resize ────────────────────────────────────────────────────
@@ -44,7 +44,7 @@
 
 	let sidebarWidth = $state(
 		typeof localStorage !== 'undefined'
-			? (parseInt(localStorage.getItem('aura-sidebar-width') ?? '', 10) || DEFAULT_WIDTH)
+			? (parseInt(localStorage.getItem('clef-sidebar-width') ?? '', 10) || DEFAULT_WIDTH)
 			: DEFAULT_WIDTH
 	);
 	let dragging = $state(false);
@@ -66,7 +66,7 @@
 	function onMouseUp() {
 		if (!dragging) return;
 		dragging = false;
-		localStorage.setItem('aura-sidebar-width', String(sidebarWidth));
+		localStorage.setItem('clef-sidebar-width', String(sidebarWidth));
 	}
 
 	// --- Tree building ---
@@ -360,8 +360,8 @@
 			onmousedown={onHandleMouseDown}
 			onkeydown={(e) => {
 				const step = e.shiftKey ? 20 : 8;
-				if (e.key === 'ArrowRight') { sidebarWidth = Math.min(MAX_WIDTH, sidebarWidth + step); localStorage.setItem('aura-sidebar-width', String(sidebarWidth)); }
-				if (e.key === 'ArrowLeft')  { sidebarWidth = Math.max(MIN_WIDTH, sidebarWidth - step); localStorage.setItem('aura-sidebar-width', String(sidebarWidth)); }
+				if (e.key === 'ArrowRight') { sidebarWidth = Math.min(MAX_WIDTH, sidebarWidth + step); localStorage.setItem('clef-sidebar-width', String(sidebarWidth)); }
+				if (e.key === 'ArrowLeft')  { sidebarWidth = Math.max(MIN_WIDTH, sidebarWidth - step); localStorage.setItem('clef-sidebar-width', String(sidebarWidth)); }
 			}}
 			aria-label="Resize sidebar"
 		></button>
