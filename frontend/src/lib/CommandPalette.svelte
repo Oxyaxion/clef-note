@@ -3,6 +3,12 @@
 	import { THEMES, type ThemeId } from './theme';
 	import { escapeHtml } from './utils';
 	import { emit } from './events';
+	import NoteIcon from './NoteIcon.svelte';
+	import {
+		copyMarkdown, copyMarkdownClean, copyHtml,
+		downloadMd, downloadMdClean,
+		printNote, shareNote, canShare,
+	} from './noteExport';
 
 	interface Command {
 		id: string;
@@ -28,70 +34,6 @@
 	}
 
 	let { notes, selected, noteMarkdown = '', currentTheme = 'default', onSelect, onClose, onNewNote, onRename, onDelete, onSetTheme, onSettings, onMediaLibrary }: Props = $props();
-
-	// ── Export / share actions ────────────────────────────────────────────────
-
-	async function copyMarkdown() {
-		await navigator.clipboard.writeText(noteMarkdown);
-		onClose();
-	}
-
-	async function copyHtml() {
-		const html = document.querySelector('.ProseMirror')?.innerHTML ?? '';
-		await navigator.clipboard.write([
-			new ClipboardItem({
-				'text/html': new Blob([html], { type: 'text/html' }),
-				'text/plain': new Blob([noteMarkdown], { type: 'text/plain' }),
-			}),
-		]);
-		onClose();
-	}
-
-	function downloadMd() {
-		const name = (selected ?? 'note').split('/').pop() ?? 'note';
-		const blob = new Blob([noteMarkdown], { type: 'text/markdown' });
-		const a = document.createElement('a');
-		a.href = URL.createObjectURL(blob);
-		a.download = `${name}.md`;
-		a.click();
-		URL.revokeObjectURL(a.href);
-		onClose();
-	}
-
-	function printNote() {
-		onClose();
-		// Small delay so the palette DOM is removed before print dialog
-		setTimeout(() => window.print(), 80);
-	}
-
-	async function shareNote() {
-		if (!navigator.share) return;
-		const name = (selected ?? 'note').split('/').pop() ?? 'note';
-		await navigator.share({ title: name, text: noteMarkdown });
-		onClose();
-	}
-
-	const canShare = typeof navigator !== 'undefined' && 'share' in navigator;
-
-	function stripQueryBlocks(md: string): string {
-		return md.replace(/^```query\n[\s\S]*?^```$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
-	}
-
-	async function copyMarkdownClean() {
-		await navigator.clipboard.writeText(stripQueryBlocks(noteMarkdown));
-		onClose();
-	}
-
-	function downloadMdClean() {
-		const name = (selected ?? 'note').split('/').pop() ?? 'note';
-		const blob = new Blob([stripQueryBlocks(noteMarkdown)], { type: 'text/markdown' });
-		const a = document.createElement('a');
-		a.href = URL.createObjectURL(blob);
-		a.download = `${name}.md`;
-		a.click();
-		URL.revokeObjectURL(a.href);
-		onClose();
-	}
 
 	let query = $state('');
 	let selectedIndex = $state(0);
@@ -178,43 +120,43 @@
 				id: 'copy-md',
 				label: 'Copy Markdown',
 				icon: '⎘',
-				action: copyMarkdown,
+				action: async () => { await copyMarkdown(noteMarkdown); onClose(); },
 			},
 			{
 				id: 'copy-html',
 				label: 'Copy HTML',
 				icon: '⎘',
-				action: copyHtml,
+				action: async () => { await copyHtml(noteMarkdown); onClose(); },
 			},
 			{
 				id: 'download-md',
 				label: 'Download .md',
 				icon: '↓',
-				action: downloadMd,
+				action: () => { downloadMd(selected, noteMarkdown); onClose(); },
 			},
 			{
 				id: 'copy-md-clean',
 				label: 'Copy Markdown (no queries)',
 				icon: '⎘',
-				action: copyMarkdownClean,
+				action: async () => { await copyMarkdownClean(noteMarkdown); onClose(); },
 			},
 			{
 				id: 'download-md-clean',
 				label: 'Download .md (no queries)',
 				icon: '↓',
-				action: downloadMdClean,
+				action: () => { downloadMdClean(selected, noteMarkdown); onClose(); },
 			},
 			{
 				id: 'print',
 				label: 'Print / PDF',
 				icon: '⎙',
-				action: printNote,
+				action: () => { onClose(); printNote(); },
 			},
 			...(canShare ? [{
 				id: 'share',
 				label: 'Share',
 				icon: '↗',
-				action: shareNote,
+				action: async () => { await shareNote(selected, noteMarkdown); onClose(); },
 			}] : []),
 		] : []),
 	]);
@@ -414,20 +356,8 @@
 						{:else if item.snippet}
 							<div class="snippet-result">
 								<div class="snippet-title-row">
-									<span class="item-icon note-icon" aria-hidden="true">
-										{#if item.meta?.note_type === 'index' || notes.find(n => n.name === item.name)?.is_index}
-											<svg viewBox="0 0 12 12" fill="none">
-												<rect x="1" y="1" width="4" height="4" rx="0.5" stroke="currentColor" stroke-width="1.2"/>
-												<rect x="7" y="1" width="4" height="4" rx="0.5" stroke="currentColor" stroke-width="1.2"/>
-												<rect x="1" y="7" width="4" height="4" rx="0.5" stroke="currentColor" stroke-width="1.2"/>
-												<rect x="7" y="7" width="4" height="4" rx="0.5" stroke="currentColor" stroke-width="1.2"/>
-											</svg>
-										{:else}
-											<svg viewBox="0 0 16 16" fill="none">
-												<path d="M3 2h7l3 3v9H3V2z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
-												<path d="M10 2v3h3" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
-											</svg>
-										{/if}
+									<span class="item-icon note-icon">
+										<NoteIcon isIndex={item.meta?.note_type === 'index' || notes.find(n => n.name === item.name)?.is_index} />
 									</span>
 									<span class="item-label">{item.name}</span>
 								</div>
@@ -435,20 +365,8 @@
 								<p class="item-snippet">{@html highlightQuery(item.snippet, query)}</p>
 							</div>
 						{:else}
-							<span class="item-icon note-icon" aria-hidden="true">
-								{#if item.meta?.note_type === 'index' || notes.find(n => n.name === item.name)?.is_index}
-									<svg viewBox="0 0 12 12" fill="none">
-										<rect x="1" y="1" width="4" height="4" rx="0.5" stroke="currentColor" stroke-width="1.2"/>
-										<rect x="7" y="1" width="4" height="4" rx="0.5" stroke="currentColor" stroke-width="1.2"/>
-										<rect x="1" y="7" width="4" height="4" rx="0.5" stroke="currentColor" stroke-width="1.2"/>
-										<rect x="7" y="7" width="4" height="4" rx="0.5" stroke="currentColor" stroke-width="1.2"/>
-									</svg>
-								{:else}
-									<svg viewBox="0 0 16 16" fill="none">
-										<path d="M3 2h7l3 3v9H3V2z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
-										<path d="M10 2v3h3" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
-									</svg>
-								{/if}
+							<span class="item-icon note-icon">
+								<NoteIcon isIndex={item.meta?.note_type === 'index' || notes.find(n => n.name === item.name)?.is_index} />
 							</span>
 							<span class="item-label">{item.name}</span>
 							{#if item.meta}
@@ -635,7 +553,7 @@
 		top: 2px;
 	}
 
-	.note-icon svg {
+	.note-icon :global(svg) {
 		width: 100%;
 		height: 100%;
 	}
