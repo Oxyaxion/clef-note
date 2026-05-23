@@ -53,10 +53,13 @@
 		return (ed.storage as unknown as { markdown: MarkdownStorage }).markdown.getMarkdown();
 	}
 
-	// Reload aliases whenever the note list changes
+	// Load aliases on mount; reload only on rename/delete (notes:changed), not on every keystroke.
+	// noteNames changes on every save, so watching it would fire a GET /api/aliases per keystroke.
 	$effect(() => {
-		const _ = noteNames; // declare dependency first, before any early return
 		getAliases().then(m => { aliasMap = m; }).catch(() => {});
+		return on(document, 'notes:changed', () => {
+			getAliases().then(m => { aliasMap = m; }).catch(() => {});
+		});
 	});
 
 	// noteNames is a Svelte 5 prop getter — the closure reads the current value lazily on each call
