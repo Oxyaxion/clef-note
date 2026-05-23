@@ -74,18 +74,27 @@
 		onFrontmatterChange({ ...noteFrontmatter, toc: false });
 	}
 
-	onMount(() => on(window, 'auth:expired', () => { loggedIn = false; }));
+	// One-time setup: auth expiry + media query — neither depends on reactive state.
+	onMount(() => {
+		const offAuth = on(window, 'auth:expired', () => { loggedIn = false; });
+		const mq = window.matchMedia('(max-width: 640px)');
+		isMobile = mq.matches;
+		const mqHandler = (e: MediaQueryListEvent) => { isMobile = e.matches; };
+		mq.addEventListener('change', mqHandler);
+		return () => { offAuth(); mq.removeEventListener('change', mqHandler); };
+	});
 
-	// Runs immediately if already logged in, or re-runs after login.
-	// onMount alone is not enough: when a user logs in, onMount has already
-	// finished and the wiki-navigate listener (and other setup) would never fire.
+	// Re-run when loggedIn changes: apply theme saved in localStorage.
 	$effect(() => {
 		if (!loggedIn) return;
-
 		const theme = loadTheme();
 		currentTheme = theme;
 		applyTheme(theme);
+	});
 
+	// Re-run when loggedIn changes: fetch initial notes + settings, then open home page.
+	$effect(() => {
+		if (!loggedIn) return;
 		Promise.all([listNotes(), getSettings()]).then(([n, raw]) => {
 			notes = n;
 			const s: AppSettings = { ...DEFAULT, ...(raw as Partial<AppSettings>) };
@@ -96,8 +105,13 @@
 			const home = s.homePage?.trim();
 			if (home) selectNote(home).catch(() => {});
 		});
+	});
 
-		const offWikiNav = on(document, 'wiki-navigate', (target) => {
+	// Re-run when loggedIn changes: subscribe to wiki-link navigation events.
+	// The handler reads `notes` lazily at event-fire time, so it always sees the current list.
+	$effect(() => {
+		if (!loggedIn) return;
+		return on(document, 'wiki-navigate', (target) => {
 			if (!target) return;
 			const exact = notes.find(n => n.name === target);
 			const resolved = exact
@@ -105,16 +119,6 @@
 				?? notes.find(n => n.name.toLowerCase().split('/').pop() === target.toLowerCase());
 			selectNote(resolved?.name ?? target).catch(() => {});
 		});
-
-		const mq = window.matchMedia('(max-width: 640px)');
-		isMobile = mq.matches;
-		const mqHandler = (e: MediaQueryListEvent) => { isMobile = e.matches; };
-		mq.addEventListener('change', mqHandler);
-
-		return () => {
-			offWikiNav();
-			mq.removeEventListener('change', mqHandler);
-		};
 	});
 
 	async function selectNote(name: string, pushHistory = true) {
