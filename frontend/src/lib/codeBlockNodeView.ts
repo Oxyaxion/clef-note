@@ -1,5 +1,8 @@
+import type { Editor } from '@tiptap/core';
+import type { Node as PmNode } from '@tiptap/pm/model';
+
 export function makeCodeBlockNodeView() {
-	return ({ node, getPos, editor: ed }: { node: any; getPos: any; editor: any }) => {
+	return ({ node, getPos, editor: ed }: { node: PmNode; getPos: () => number | undefined; editor: Editor }) => {
 		const dom = document.createElement('div');
 		dom.className = 'code-block-wrap';
 
@@ -75,12 +78,12 @@ export function makeCodeBlockNodeView() {
 			dom,
 			contentDOM: codeEl,
 			stopEvent(event: Event) {
-				return header.contains(event.target as Node);
+				return header.contains(event.target as globalThis.Node);
 			},
-			ignoreMutation(mutation: { target: Node }) {
+			ignoreMutation(mutation: MutationRecord | { type: string; target: globalThis.Node }) {
 				return !codeEl.contains(mutation.target);
 			},
-			update(updatedNode: any) {
+			update(updatedNode: PmNode) {
 				if (updatedNode.type.name !== 'codeBlock') return false;
 				const lang = updatedNode.attrs.language || '';
 				if (!header.contains(document.activeElement)) {
