@@ -141,14 +141,14 @@ export async function getFieldValues(field: string): Promise<string[]> {
     return res.json();
 }
 
-export async function listTags(): Promise<TagCount[]> {
-    const res = await apiFetch(`${BASE}/api/tags`, { headers: authHeaders() });
+export async function listTags(signal?: AbortSignal): Promise<TagCount[]> {
+    const res = await apiFetch(`${BASE}/api/tags`, { headers: authHeaders(), signal });
     if (!res.ok) throw new Error('Failed to list tags');
     return res.json();
 }
 
-export async function queryNotes(q: string): Promise<NoteQueryResult[]> {
-    const res = await apiFetch(`${BASE}/api/query?q=${encodeURIComponent(q)}`, { headers: authHeaders() });
+export async function queryNotes(q: string, signal?: AbortSignal): Promise<NoteQueryResult[]> {
+    const res = await apiFetch(`${BASE}/api/query?q=${encodeURIComponent(q)}`, { headers: authHeaders(), signal });
     if (!res.ok) throw new Error('Failed to query notes');
     return res.json();
 }

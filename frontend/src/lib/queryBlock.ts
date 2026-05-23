@@ -348,6 +348,7 @@ export const QueryBlock = Node.create({
 
             // ── Results rendering ────────────────────────────────────────────
             let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+            let fetchCtrl: AbortController | null = null;
 
             function renderTags(tags: TagCount[]) {
                 results.innerHTML = '';
@@ -380,26 +381,34 @@ export const QueryBlock = Node.create({
             }
 
             async function fetchResults(q: string) {
+                fetchCtrl?.abort();
+                const ctrl = new AbortController();
+                fetchCtrl = ctrl;
+
                 const { cleanQuery, print } = parsePrint(q);
                 currentPrint = print;
 
                 if (!cleanQuery.trim()) {
                     countEl.textContent = '';
                     results.innerHTML = '<span class="query-empty">Type a query above…</span>';
+                    fetchCtrl = null;
                     return;
                 }
                 results.innerHTML = '<span class="query-empty">Searching…</span>';
                 try {
                     if (cleanQuery.trim() === '#') {
-                        const tags = await listTags();
+                        const tags = await listTags(ctrl.signal);
                         renderTags(tags);
-                        return;
+                    } else {
+                        const rows = await queryNotes(cleanQuery, ctrl.signal);
+                        renderResults(rows, print);
                     }
-                    const rows = await queryNotes(cleanQuery);
-                    renderResults(rows, print);
-                } catch {
+                } catch (e) {
+                    if (e instanceof DOMException && e.name === 'AbortError') return;
                     countEl.textContent = '';
                     results.innerHTML = '<span class="query-empty query-error">Query error</span>';
+                } finally {
+                    if (fetchCtrl === ctrl) fetchCtrl = null;
                 }
             }
 
@@ -436,6 +445,7 @@ export const QueryBlock = Node.create({
                 },
                 destroy() {
                     if (debounceTimer) clearTimeout(debounceTimer);
+                    fetchCtrl?.abort();
                     offNotesChanged();
                 },
             };
