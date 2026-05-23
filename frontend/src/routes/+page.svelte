@@ -37,10 +37,13 @@
 	let noteContent = $state('');
 	let noteFrontmatter = $state<Frontmatter>({});
 	const autoSave = createAutoSave((name, fm) => {
+		const pinned = fm.pinned === true;
+		const is_index = fm.type === 'index';
+		const is_template = fm.type === 'template';
+		const cur = notes.find(n => n.name === name);
+		if (cur?.pinned === pinned && cur?.is_index === is_index && cur?.is_template === is_template) return;
 		notes = notes.map(n =>
-			n.name === name
-				? { ...n, pinned: fm.pinned === true, is_index: fm.type === 'index', is_template: fm.type === 'template' }
-				: n
+			n.name === name ? { ...n, pinned, is_index, is_template } : n
 		);
 	});
 	let paletteOpen = $state(false);
