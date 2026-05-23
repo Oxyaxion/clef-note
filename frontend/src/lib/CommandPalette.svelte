@@ -40,7 +40,8 @@
 	let contentResults = $state<SearchResult[]>([]);
 	let dslResults = $state<NoteQueryResult[]>([]);
 	let dslTagResults = $state<TagCount[]>([]);
-	let searchTimer: ReturnType<typeof setTimeout> | null = null;
+	let contentSearchTimer: ReturnType<typeof setTimeout> | null = null;
+	let dslSearchTimer: ReturnType<typeof setTimeout> | null = null;
 
 	const isCommandMode = $derived(query.startsWith('>'));
 	const isQueryMode = $derived(query.startsWith('?'));
@@ -208,8 +209,8 @@
 			contentResults = [];
 			return;
 		}
-		if (searchTimer) clearTimeout(searchTimer);
-		searchTimer = setTimeout(async () => {
+		if (contentSearchTimer) clearTimeout(contentSearchTimer);
+		contentSearchTimer = setTimeout(async () => {
 			try {
 				contentResults = await searchContent(q);
 			} catch {
@@ -227,8 +228,8 @@
 			return;
 		}
 		if (q.trim() === '#') {
-			if (searchTimer) clearTimeout(searchTimer);
-			searchTimer = setTimeout(async () => {
+			if (dslSearchTimer) clearTimeout(dslSearchTimer);
+			dslSearchTimer = setTimeout(async () => {
 				try {
 					dslTagResults = await listTags();
 					dslResults = [];
@@ -243,8 +244,8 @@
 			dslResults = [];
 			return;
 		}
-		if (searchTimer) clearTimeout(searchTimer);
-		searchTimer = setTimeout(async () => {
+		if (dslSearchTimer) clearTimeout(dslSearchTimer);
+		dslSearchTimer = setTimeout(async () => {
 			try {
 				dslResults = await queryNotes(q);
 			} catch {
