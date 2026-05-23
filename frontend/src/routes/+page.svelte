@@ -165,7 +165,12 @@
 	}
 
 	async function createNote(name: string) {
-		await saveNote(name, '');
+		try {
+			await saveNote(name, '');
+		} catch {
+			loadError = `Could not create "${name}". The server may be unreachable.`;
+			return;
+		}
 		notes = [...notes, { name, pinned: false }];
 		await selectNote(name);
 	}
