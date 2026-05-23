@@ -1,6 +1,8 @@
 const KEYS = {
     token: 'clef_token',
     theme: 'clef-theme',
+    sidebarCollapsed: 'clef-sidebar-collapsed',
+    sidebarWidth: 'clef-sidebar-width',
 } as const;
 
 type StorageKey = typeof KEYS[keyof typeof KEYS];
@@ -27,5 +29,12 @@ export const storage = {
     theme: {
         get: (): string | null => get(KEYS.theme),
         set: (id: string) => set(KEYS.theme, id),
+    },
+    sidebar: {
+        getCollapsed: (): boolean => get(KEYS.sidebarCollapsed) === 'true',
+        setCollapsed: (v: boolean) => set(KEYS.sidebarCollapsed, String(v)),
+        getWidth: (defaultWidth: number): number =>
+            parseInt(get(KEYS.sidebarWidth) ?? '', 10) || defaultWidth,
+        setWidth: (w: number) => set(KEYS.sidebarWidth, String(w)),
     },
 } as const;

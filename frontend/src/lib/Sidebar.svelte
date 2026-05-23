@@ -2,6 +2,7 @@
 	import { untrack } from 'svelte';
 	import type { NoteMeta } from './api';
 	import { buildTree, flatten, type DisplayItem } from './sidebarTree';
+	import { storage } from './storage';
 
 	interface Props {
 		notes: NoteMeta[];
@@ -29,13 +30,11 @@
 	let creating = $state(false);
 	let filterQuery = $state('');
 	let filterInput = $state<HTMLInputElement | null>(null);
-	let collapsed = $state(
-		typeof localStorage !== 'undefined' && localStorage.getItem('clef-sidebar-collapsed') === 'true'
-	);
+	let collapsed = $state(storage.sidebar.getCollapsed());
 
 	function toggleCollapse() {
 		collapsed = !collapsed;
-		localStorage.setItem('clef-sidebar-collapsed', String(collapsed));
+		storage.sidebar.setCollapsed(collapsed);
 	}
 
 	// ── Resize ────────────────────────────────────────────────────
@@ -43,11 +42,7 @@
 	const MAX_WIDTH = 480;
 	const DEFAULT_WIDTH = 240;
 
-	let sidebarWidth = $state(
-		typeof localStorage !== 'undefined'
-			? (parseInt(localStorage.getItem('clef-sidebar-width') ?? '', 10) || DEFAULT_WIDTH)
-			: DEFAULT_WIDTH
-	);
+	let sidebarWidth = $state(storage.sidebar.getWidth(DEFAULT_WIDTH));
 	let dragging = $state(false);
 	let dragStartX = 0;
 	let dragStartWidth = 0;
@@ -67,7 +62,7 @@
 	function onMouseUp() {
 		if (!dragging) return;
 		dragging = false;
-		localStorage.setItem('clef-sidebar-width', String(sidebarWidth));
+		storage.sidebar.setWidth(sidebarWidth);
 	}
 
 	let openFolders = $state<Set<string>>(new Set());
@@ -298,8 +293,8 @@
 			onmousedown={onHandleMouseDown}
 			onkeydown={(e) => {
 				const step = e.shiftKey ? 20 : 8;
-				if (e.key === 'ArrowRight') { sidebarWidth = Math.min(MAX_WIDTH, sidebarWidth + step); localStorage.setItem('clef-sidebar-width', String(sidebarWidth)); }
-				if (e.key === 'ArrowLeft')  { sidebarWidth = Math.max(MIN_WIDTH, sidebarWidth - step); localStorage.setItem('clef-sidebar-width', String(sidebarWidth)); }
+				if (e.key === 'ArrowRight') { sidebarWidth = Math.min(MAX_WIDTH, sidebarWidth + step); storage.sidebar.setWidth(sidebarWidth); }
+				if (e.key === 'ArrowLeft')  { sidebarWidth = Math.max(MIN_WIDTH, sidebarWidth - step); storage.sidebar.setWidth(sidebarWidth); }
 			}}
 			aria-label="Resize sidebar"
 		></button>
