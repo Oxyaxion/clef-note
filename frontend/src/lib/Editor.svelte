@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { Editor, InputRule } from '@tiptap/core';
+	import { EditorState } from '@tiptap/pm/state';
 	import StarterKit from '@tiptap/starter-kit';
 	import Placeholder from '@tiptap/extension-placeholder';
 	import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table';
@@ -187,7 +188,12 @@
 		const current = getMarkdown(editor);
 		if (content !== current) {
 			isUpdatingFromProp = true;
-			editor.commands.setContent(content);
+			editor.commands.setContent(content, { emitUpdate: false });
+			// Replace state entirely so undo history from the previous note is cleared.
+			// Without this, Ctrl+Z after switching notes could revert to another note's content.
+			const { schema, plugins, doc } = editor.state;
+			editor.view.updateState(EditorState.create({ schema, plugins, doc }));
+			element.scrollTop = 0;
 			isUpdatingFromProp = false;
 		}
 	});
