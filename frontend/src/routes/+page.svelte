@@ -172,7 +172,12 @@
 			try {
 				const fullContent = serializeFrontmatter(fm) + body;
 				await saveNote(name, fullContent);
-				notes = await listNotes();
+				// Derive metadata locally — avoids a full round-trip on every keystroke
+				notes = notes.map(n =>
+					n.name === name
+						? { ...n, pinned: fm.pinned === true, is_index: fm.type === 'index', is_template: fm.type === 'template' }
+						: n
+				);
 			} catch {
 				// save failed — indicator resets, user can retry
 			} finally {
