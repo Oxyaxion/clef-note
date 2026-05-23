@@ -3,6 +3,7 @@
 	import { THEMES, type ThemeId } from './theme';
 	import { applySettings, DEFAULT, FONT_PRESETS, DATE_FORMATS, type AppSettings } from './settings';
 	import { fetchKeys, putSettings } from './api';
+	import { debounce } from './utils';
 
 	interface Props {
 		currentTheme: ThemeId;
@@ -16,7 +17,7 @@
 	let { currentTheme, onClose, onSetTheme, onLogout, onSettingsChange, initialSettings = DEFAULT }: Props = $props();
 
 	let settings = $state<AppSettings>({ ...untrack(() => initialSettings) });
-	let saveTimer: ReturnType<typeof setTimeout> | null = null;
+	const debouncedSave = debounce(() => putSettings(settings), 400);
 
 	let apiKey = $state('');
 	let apiKeyRevealed = $state(false);
@@ -40,15 +41,14 @@
 	function onChange() {
 		applySettings(settings);
 		onSettingsChange?.(settings);
-		if (saveTimer) clearTimeout(saveTimer);
-		saveTimer = setTimeout(() => putSettings(settings as unknown as Record<string, unknown>), 400);
+		debouncedSave();
 	}
 
 	function onReset() {
 		settings = { ...DEFAULT };
 		applySettings(settings);
 		onSettingsChange?.(settings);
-		putSettings(settings as unknown as Record<string, unknown>);
+		putSettings(settings);
 	}
 
 	function onBackdropClick(e: MouseEvent) {

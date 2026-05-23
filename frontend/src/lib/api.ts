@@ -1,4 +1,5 @@
 import { emit } from './events';
+import type { AppSettings } from './settings';
 
 const BASE = import.meta.env.VITE_API_BASE ?? '';
 
@@ -305,7 +306,7 @@ export async function getSettings(): Promise<Record<string, unknown>> {
     return res.json();
 }
 
-export async function putSettings(s: Record<string, unknown>): Promise<void> {
+export async function putSettings(s: AppSettings): Promise<void> {
     await apiFetch(`${BASE}/api/settings`, {
         method: 'PUT',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
