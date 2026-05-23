@@ -6,6 +6,8 @@
 		getDrawingPreview, getMediaUsage,
 		type AssetMeta,
 	} from './api';
+	import MediaAssets from './MediaAssets.svelte';
+	import MediaDrawings from './MediaDrawings.svelte';
 
 	const BASE = import.meta.env.VITE_API_BASE ?? '';
 
@@ -27,18 +29,6 @@
 	let usedAssets = $state<Set<string> | null>(null);
 	let usedDrawings = $state<Set<string> | null>(null);
 	let filter = $state<'all' | 'used' | 'orphaned'>('all');
-
-	const filteredAssets = $derived(
-		filter === 'all' || !usedAssets ? assets :
-		filter === 'used' ? assets.filter(a => usedAssets!.has(a.name)) :
-		assets.filter(a => !usedAssets!.has(a.name))
-	);
-
-	const filteredDrawings = $derived(
-		filter === 'all' || !usedDrawings ? drawings :
-		filter === 'used' ? drawings.filter(d => usedDrawings!.has(d)) :
-		drawings.filter(d => !usedDrawings!.has(d))
-	);
 
 	onMount(async () => {
 		await reload();
@@ -83,12 +73,6 @@
 		if (preview?.kind === 'drawing' && preview.name === name) preview = null;
 	}
 
-	function formatSize(bytes: number): string {
-		if (bytes < 1024) return `${bytes} B`;
-		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-	}
-
 	function onWindowKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') {
 			if (preview) { preview = null; }
@@ -115,8 +99,6 @@
 	function onBackdropClick(e: MouseEvent) {
 		if (e.target === e.currentTarget) preview = null;
 	}
-
-
 </script>
 
 <svelte:window onkeydown={onWindowKeydown} />
@@ -153,72 +135,23 @@
 	<div class="meta-body">
 		{#if loading}
 			<div class="empty-state">Loading…</div>
-
 		{:else if activeTab === 'images'}
-			{#if assets.length === 0}
-				<div class="empty-state">No images yet. Paste or upload one in a note.</div>
-			{:else if filteredAssets.length === 0}
-				<div class="empty-state">No {filter} images.</div>
-			{:else}
-				<div class="grid">
-					{#each filteredAssets as asset (asset.name)}
-						{@const isOrphaned = usedAssets !== null && !usedAssets.has(asset.name)}
-						<div class="card" class:orphaned={isOrphaned}>
-							<button class="card-thumb" onclick={() => (preview = { kind: 'image', asset })}>
-								<img src="{BASE}/assets/{asset.name}" alt={asset.name} loading="lazy" />
-								<div class="thumb-overlay">
-									<svg viewBox="0 0 20 20" fill="none"><path d="M8 3H3v5M17 3h-5M3 12v5h5M12 17h5v-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-								</div>
-							</button>
-							<div class="card-footer">
-								<div class="card-info">
-									<span class="card-name" title={asset.name}>{asset.name}</span>
-									<span class="card-size">{formatSize(asset.size)}</span>
-								</div>
-								{#if isOrphaned}
-									<span class="badge-orphaned">orphaned</span>
-								{/if}
-								<button class="card-delete" title="Delete" onclick={() => removeAsset(asset.name)}>✕</button>
-							</div>
-						</div>
-					{/each}
-				</div>
-			{/if}
-
+			<MediaAssets
+				{assets}
+				{usedAssets}
+				{filter}
+				onPreview={(asset) => (preview = { kind: 'image', asset })}
+				onDelete={removeAsset}
+			/>
 		{:else if activeTab === 'drawings'}
-			{#if drawings.length === 0}
-				<div class="empty-state">No drawings yet. Insert one with <kbd>/drawing</kbd>.</div>
-			{:else if filteredDrawings.length === 0}
-				<div class="empty-state">No {filter} drawings.</div>
-			{:else}
-				<div class="grid">
-					{#each filteredDrawings as name (name)}
-						{@const isOrphaned = usedDrawings !== null && !usedDrawings.has(name)}
-						<div class="card" class:orphaned={isOrphaned}>
-							<button class="card-thumb drawing-thumb" onclick={() => (preview = { kind: 'drawing', name })}>
-								{#if drawingPreviews[name]}
-									<!-- eslint-disable-next-line svelte/no-at-html-tags -->
-									{@html drawingPreviews[name]}
-								{:else}
-									<span class="thumb-icon">✎</span>
-								{/if}
-								<div class="thumb-overlay">
-									<svg viewBox="0 0 20 20" fill="none"><path d="M8 3H3v5M17 3h-5M3 12v5h5M12 17h5v-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-								</div>
-							</button>
-							<div class="card-footer">
-								<div class="card-info">
-									<span class="card-name" title={name}>{name}</span>
-								</div>
-								{#if isOrphaned}
-									<span class="badge-orphaned">orphaned</span>
-								{/if}
-								<button class="card-delete" title="Delete" onclick={() => removeDrawing(name)}>✕</button>
-							</div>
-						</div>
-					{/each}
-				</div>
-			{/if}
+			<MediaDrawings
+				{drawings}
+				{drawingPreviews}
+				{usedDrawings}
+				{filter}
+				onPreview={(name) => (preview = { kind: 'drawing', name })}
+				onDelete={removeDrawing}
+			/>
 		{/if}
 	</div>
 </div>
@@ -231,7 +164,6 @@
 			<div class="lightbox-toolbar">
 				{#if preview.kind === 'image'}
 					<span class="lightbox-title">{preview.asset.name}</span>
-					<span class="lightbox-meta">{formatSize(preview.asset.size)}</span>
 					<button class="lb-delete-btn" onclick={() => removeAsset((preview as { kind: 'image'; asset: AssetMeta }).asset.name)}>
 						Delete
 					</button>
@@ -255,7 +187,6 @@
 				{/if}
 			</div>
 
-			<!-- navigation arrows if more than one item -->
 			{#if (preview.kind === 'image' ? assets.length : drawings.length) > 1}
 				<button class="lb-nav lb-prev" onclick={() => nextPreview(-1)} title="Previous">‹</button>
 				<button class="lb-nav lb-next" onclick={() => nextPreview(1)}  title="Next">›</button>
@@ -380,142 +311,6 @@
 		font-size: 0.9rem;
 		font-style: italic;
 	}
-	.empty-state kbd {
-		font-style: normal;
-		font-size: 0.8rem;
-		padding: 0.1rem 0.35rem;
-		border: 1px solid var(--border);
-		border-radius: 4px;
-		background: var(--sidebar-bg);
-		font-family: inherit;
-		color: var(--text);
-		margin: 0 0.1rem;
-	}
-
-	/* ── Grid ─────────────────────────────────────────────────── */
-	.grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-		gap: 1rem;
-	}
-
-	.card {
-		border: 1px solid var(--border);
-		border-radius: 8px;
-		overflow: hidden;
-		background: var(--sidebar-bg);
-		transition: border-color 120ms;
-	}
-	.card:hover { border-color: var(--muted); }
-
-	.card-thumb {
-		width: 100%;
-		aspect-ratio: 4 / 3;
-		overflow: hidden;
-		background: var(--bg);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		cursor: zoom-in;
-		position: relative;
-		border: none;
-		padding: 0;
-	}
-	.card-thumb img {
-		width: 100%;
-		height: 100%;
-		object-fit: cover;
-		transition: opacity 120ms;
-	}
-	.card-thumb:hover img,
-	.card-thumb:hover :global(svg:not(.thumb-overlay svg)) { opacity: 0.75; }
-
-	.drawing-thumb :global(svg) {
-		width: 100%;
-		height: 100%;
-		padding: 0.5rem;
-	}
-
-	.thumb-overlay {
-		position: absolute;
-		inset: 0;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		opacity: 0;
-		transition: opacity 120ms;
-		pointer-events: none;
-	}
-	.thumb-overlay svg {
-		width: 28px;
-		height: 28px;
-		color: white;
-		filter: drop-shadow(0 1px 3px rgba(0,0,0,0.6));
-	}
-	.card-thumb:hover .thumb-overlay { opacity: 1; }
-
-	.thumb-icon {
-		font-size: 2rem;
-		color: var(--muted);
-	}
-
-	.card-footer {
-		display: flex;
-		align-items: center;
-		padding: 0.45rem 0.6rem;
-		gap: 0.4rem;
-		border-top: 1px solid var(--border);
-	}
-
-	.card-info {
-		flex: 1;
-		min-width: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 0.1rem;
-	}
-
-	.card-name {
-		font-size: 0.78rem;
-		color: var(--text);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.card-size {
-		font-size: 0.7rem;
-		color: var(--muted);
-	}
-
-	.badge-orphaned {
-		font-size: 0.65rem;
-		padding: 0.1rem 0.35rem;
-		border-radius: 4px;
-		background: rgba(224, 144, 80, 0.1);
-		border: 1px solid rgba(224, 144, 80, 0.35);
-		color: #e09050;
-		white-space: nowrap;
-		flex-shrink: 0;
-	}
-
-	.card.orphaned {
-		border-color: rgba(224, 144, 80, 0.3);
-	}
-
-	.card-delete {
-		background: none;
-		border: none;
-		cursor: pointer;
-		color: var(--muted);
-		font-size: 0.72rem;
-		padding: 0.2rem 0.3rem;
-		border-radius: 4px;
-		flex-shrink: 0;
-		line-height: 1;
-		transition: color 80ms, background 80ms;
-	}
-	.card-delete:hover { color: #e57373; background: rgba(229, 115, 115, 0.1); }
 
 	/* ── Lightbox ─────────────────────────────────────────────── */
 	.lightbox-backdrop {
@@ -559,12 +354,6 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-	}
-
-	.lightbox-meta {
-		font-size: 0.78rem;
-		color: var(--muted);
-		flex-shrink: 0;
 	}
 
 	.lb-delete-btn {
@@ -629,7 +418,6 @@
 		font-size: 0.9rem;
 	}
 
-	/* nav arrows */
 	.lb-nav {
 		position: absolute;
 		top: 50%;
@@ -649,6 +437,4 @@
 	.lb-prev { left: 0.5rem; }
 	.lb-next { right: 0.5rem; }
 	.lb-nav:hover { background: rgba(0,0,0,0.65); }
-
-
 </style>
