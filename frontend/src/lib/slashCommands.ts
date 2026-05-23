@@ -7,6 +7,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import tippy, { type Instance as TippyInstance } from 'tippy.js';
 import type { Editor, Range } from '@tiptap/core';
 import { ALL_ITEMS, type CommandItem } from './slashCommandItems';
+import { buildSuggestionMenu } from './suggestionMenu';
 
 export { setDateFormat } from './dateFormat.svelte';
 export { ALL_ITEMS, type CommandItem } from './slashCommandItems';
@@ -19,65 +20,21 @@ const SlashInputTrackerKey = new PluginKey('slashInputTracker');
 // moved to an existing '/' via mouse click or arrow keys.
 let docJustChanged = false;
 
-// —— Menu DOM ——
+// —— Item renderer ——
 
-function buildMenu(onSelect: (item: CommandItem) => void) {
-	let selectedIndex = 0;
-	let items: CommandItem[] = [];
+function renderCommandItem(item: CommandItem, btn: HTMLButtonElement) {
+	const icon = document.createElement('span');
+	icon.className = 'slash-menu-icon';
+	icon.textContent = item.icon;
 
-	const el = document.createElement('div');
-	el.className = 'slash-menu';
+	const text = document.createElement('span');
+	text.className = 'slash-menu-text';
+	text.innerHTML =
+		`<span class="slash-menu-title">${item.title}</span>` +
+		`<span class="slash-menu-desc">${item.description}</span>`;
 
-	function render() {
-		el.innerHTML = '';
-		if (items.length === 0) {
-			const empty = document.createElement('div');
-			empty.className = 'slash-menu-empty';
-			empty.textContent = 'No commands found';
-			el.appendChild(empty);
-			return;
-		}
-		items.forEach((item, i) => {
-			const btn = document.createElement('button');
-			btn.className = 'slash-menu-item' + (i === selectedIndex ? ' selected' : '');
-
-			const icon = document.createElement('span');
-			icon.className = 'slash-menu-icon';
-			icon.textContent = item.icon;
-
-			const text = document.createElement('span');
-			text.className = 'slash-menu-text';
-			text.innerHTML =
-				`<span class="slash-menu-title">${item.title}</span>` +
-				`<span class="slash-menu-desc">${item.description}</span>`;
-
-			btn.appendChild(icon);
-			btn.appendChild(text);
-			btn.addEventListener('mousedown', (e) => {
-				e.preventDefault();
-				onSelect(item);
-			});
-			el.appendChild(btn);
-		});
-	}
-
-	return {
-		el,
-		update(newItems: CommandItem[]) {
-			items = newItems;
-			selectedIndex = 0;
-			render();
-		},
-		move(delta: number) {
-			if (items.length === 0) return;
-			selectedIndex = (selectedIndex + delta + items.length) % items.length;
-			render();
-			el.querySelectorAll('.slash-menu-item')[selectedIndex]?.scrollIntoView({ block: 'nearest' });
-		},
-		select(): CommandItem | null {
-			return items[selectedIndex] ?? null;
-		},
-	};
+	btn.appendChild(icon);
+	btn.appendChild(text);
 }
 
 // —— Extension TipTap ——
@@ -106,7 +63,7 @@ export const SlashCommand = Extension.create({
 
 				render: () => {
 					let popup: TippyInstance[];
-					let menu: ReturnType<typeof buildMenu>;
+					let menu: ReturnType<typeof buildSuggestionMenu<CommandItem>>;
 					let editorRef: Editor;
 					let rangeRef: Range;
 
@@ -115,9 +72,11 @@ export const SlashCommand = Extension.create({
 							editorRef = props.editor;
 							rangeRef = props.range;
 
-							menu = buildMenu((item) => {
-								item.command({ editor: editorRef, range: rangeRef });
-							});
+							menu = buildSuggestionMenu(
+								renderCommandItem,
+								(item) => item.command({ editor: editorRef, range: rangeRef }),
+								'No commands found',
+							);
 							menu.update(props.items);
 
 							popup = tippy('body', {

@@ -7,6 +7,7 @@ import { PluginKey } from '@tiptap/pm/state';
 import tippy, { type Instance as TippyInstance } from 'tippy.js';
 import type { Editor, Range } from '@tiptap/core';
 import { escapeHtml } from './utils';
+import { buildSuggestionMenu } from './suggestionMenu';
 
 const WikiLinkSuggestionKey = new PluginKey('wikiLinkSuggestion');
 
@@ -16,66 +17,20 @@ interface WikiItem {
 	aliasOf?: string;  // if this is an alias, the canonical note name
 }
 
-function buildMenu(onSelect: (item: WikiItem) => void) {
-	let selectedIndex = 0;
-	let items: WikiItem[] = [];
+function renderWikiItem(item: WikiItem, btn: HTMLButtonElement) {
+	const icon = document.createElement('span');
+	icon.className = 'slash-menu-icon';
+	icon.textContent = '[[';
 
-	const el = document.createElement('div');
-	el.className = 'slash-menu';
+	const text = document.createElement('span');
+	text.className = 'slash-menu-text';
+	text.innerHTML = item.aliasOf
+		? `<span class="slash-menu-title">${escapeHtml(item.display)}</span>` +
+		  `<span class="slash-menu-desc">→ ${escapeHtml(item.aliasOf)}</span>`
+		: `<span class="slash-menu-title">${escapeHtml(item.display)}</span>`;
 
-	function render() {
-		el.innerHTML = '';
-		if (items.length === 0) {
-			const empty = document.createElement('div');
-			empty.className = 'slash-menu-empty';
-			empty.textContent = 'No notes found';
-			el.appendChild(empty);
-			return;
-		}
-		items.forEach((item, i) => {
-			const btn = document.createElement('button');
-			btn.className = 'slash-menu-item' + (i === selectedIndex ? ' selected' : '');
-
-			const icon = document.createElement('span');
-			icon.className = 'slash-menu-icon';
-			icon.textContent = '[[';
-
-			const text = document.createElement('span');
-			text.className = 'slash-menu-text';
-			if (item.aliasOf) {
-				text.innerHTML =
-					`<span class="slash-menu-title">${escapeHtml(item.display)}</span>` +
-					`<span class="slash-menu-desc">→ ${escapeHtml(item.aliasOf)}</span>`;
-			} else {
-				text.innerHTML = `<span class="slash-menu-title">${escapeHtml(item.display)}</span>`;
-			}
-
-			btn.appendChild(icon);
-			btn.appendChild(text);
-			btn.addEventListener('mousedown', (e) => {
-				e.preventDefault();
-				onSelect(item);
-			});
-			el.appendChild(btn);
-		});
-	}
-
-	return {
-		el,
-		update(newItems: WikiItem[]) {
-			items = newItems;
-			selectedIndex = 0;
-			render();
-		},
-		move(delta: number) {
-			if (!items.length) return;
-			selectedIndex = (selectedIndex + delta + items.length) % items.length;
-			render();
-		},
-		select(): WikiItem | null {
-			return items[selectedIndex] ?? null;
-		},
-	};
+	btn.appendChild(icon);
+	btn.appendChild(text);
 }
 
 function insertWikiLink(editor: Editor, range: Range, target: string) {
@@ -139,7 +94,7 @@ export function createWikiLinkSuggestion(
 
 					render: () => {
 						let popup: TippyInstance[];
-						let menu: ReturnType<typeof buildMenu>;
+						let menu: ReturnType<typeof buildSuggestionMenu<WikiItem>>;
 						let editorRef: Editor;
 						let rangeRef: Range;
 
@@ -151,7 +106,7 @@ export function createWikiLinkSuggestion(
 							onStart(props: SuggestionProps<WikiItem>) {
 								editorRef = props.editor;
 								rangeRef = props.range;
-								menu = buildMenu(doInsert);
+								menu = buildSuggestionMenu(renderWikiItem, doInsert, 'No notes found');
 								menu.update(props.items);
 
 								popup = tippy('body', {
