@@ -1,5 +1,12 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
+import type { Node as PmNode } from '@tiptap/pm/model';
+
+interface MarkdownSerializerState {
+    write(text: string): void;
+    ensureNewLine(): void;
+    closeBlock(node: PmNode): void;
+}
 import { queryNotes, listTags, getFieldValues, type NoteQueryResult, type TagCount } from './api';
 import { on } from './events';
 import {
@@ -439,7 +446,7 @@ export const QueryBlock = Node.create({
     addStorage() {
         return {
             markdown: {
-                serialize(state: any, node: any) {
+                serialize(state: MarkdownSerializerState, node: PmNode) {
                     state.write('```query\n');
                     if (node.attrs.locked) state.write('!locked\n');
                     const q: string = node.attrs.query ?? '';
