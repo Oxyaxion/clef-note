@@ -25,6 +25,7 @@
 	import { applySettings, DEFAULT, type AppSettings } from '$lib/settings';
 	import { setDateFormat } from '$lib/slashCommands';
 	import { getSettings } from '$lib/api';
+	import TitleBar from '$lib/TitleBar.svelte';
 
 	let notes = $state<NoteMeta[]>([]);
 	let selected = $state<string | null>(null);
@@ -32,11 +33,11 @@
 	let noteFrontmatter = $state<Frontmatter>({});
 	let saveTimer: ReturnType<typeof setTimeout> | null = null;
 	let saving = $state(false);
+	let saveFailed = $state(false);
 	let paletteOpen = $state(false);
 	let sidebarOpen = $state(false);   // mobile drawer state
 	let renaming = $state(false);
 	let renameValue = $state('');
-	let renameInput = $state<HTMLInputElement | null>(null);
 	let renameError = $state('');
 	let isMobile = $state(false);
 	let creatingFromPalette = $state(false);  // true = open new-note input in sidebar
@@ -70,13 +71,6 @@
 	function disableToc() {
 		onFrontmatterChange({ ...noteFrontmatter, toc: false });
 	}
-
-	$effect(() => {
-		if (renaming && renameInput) {
-			renameInput.focus();
-			renameInput.select();
-		}
-	});
 
 	onMount(() => {
 		const onAuthExpired = () => { loggedIn = false; };
@@ -169,6 +163,7 @@
 		if (saveTimer) clearTimeout(saveTimer);
 		saveTimer = setTimeout(async () => {
 			saving = true;
+			saveFailed = false;
 			try {
 				const fullContent = serializeFrontmatter(fm) + body;
 				await saveNote(name, fullContent);
@@ -179,7 +174,7 @@
 						: n
 				);
 			} catch {
-				// save failed — indicator resets, user can retry
+				saveFailed = true;
 			} finally {
 				saving = false;
 			}
@@ -225,14 +220,14 @@
 			selected = newName;
 			document.dispatchEvent(new CustomEvent('notes:changed'));
 		} catch (e: unknown) {
-			renameError = e instanceof Error ? e.message : 'Erreur';
+			renameError = e instanceof Error ? e.message : 'Rename failed';
 			renaming = true;
 		}
 	}
 
-	function onRenameKeydown(e: KeyboardEvent) {
-		if (e.key === 'Enter') { e.preventDefault(); confirmRename(); }
-		if (e.key === 'Escape') { renaming = false; renameError = ''; }
+	function cancelRename() {
+		renaming = false;
+		renameError = '';
 	}
 
 	async function handleDelete() {
@@ -377,102 +372,23 @@
 		{#if metaPageOpen}
 			<MetaPage onClose={() => (metaPageOpen = false)} />
 		{:else if selected}
-			<!-- ── Desktop title bar ─────────────────────────────── -->
-			{#if !isMobile}
-				<div class="titlebar">
-					{#if renaming}
-						<div class="rename-row">
-							<input
-								bind:this={renameInput}
-								bind:value={renameValue}
-								onkeydown={onRenameKeydown}
-								onblur={confirmRename}
-								class="rename-input"
-								style="width: {renameValue.length + 2}ch;"
-							/>
-							{#if renameError}
-								<span class="rename-error">{renameError}</span>
-							{/if}
-						</div>
-					{:else}
-						<button onclick={startRename} title="Click to rename" class="title-btn">
-							{selected}
-						</button>
-					{/if}
-
-					<div class="titlebar-actions">
-						{#if saving}
-							<span class="saving-label">Saving…</span>
-						{/if}
-						<button
-							onclick={() => (focusMode = !focusMode)}
-							title={focusMode ? 'Exit focus mode (Ctrl+Shift+F)' : 'Focus mode (Ctrl+Shift+F)'}
-							class="focus-btn"
-							class:active={focusMode}
-							aria-label={focusMode ? 'Exit focus mode' : 'Focus mode'}
-						>
-							<svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-								{#if focusMode}
-									<path d="M3 8V3h5M17 8V3h-5M3 12v5h5M17 12v5h-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-								{:else}
-									<path d="M7 3H3v4M13 3h4v4M7 17H3v-4M13 17h4v-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-								{/if}
-							</svg>
-						</button>
-						<button
-							onclick={toggleLock}
-							title={isLocked ? 'Unlock note' : 'Lock note (read-only)'}
-							class="lock-btn"
-							class:locked={isLocked}
-							aria-label={isLocked ? 'Unlock note' : 'Lock note'}
-						>
-							{#if isLocked}
-								<!-- Closed padlock -->
-								<svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-									<rect x="4" y="9" width="12" height="9" rx="2" stroke="currentColor" stroke-width="1.5"/>
-									<path d="M7 9V6a3 3 0 0 1 6 0v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-								</svg>
-							{:else}
-								<!-- Open padlock -->
-								<svg width="14" height="14" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-									<rect x="4" y="9" width="12" height="9" rx="2" stroke="currentColor" stroke-width="1.5"/>
-									<path d="M7 9V6a3 3 0 0 1 6 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-								</svg>
-							{/if}
-						</button>
-						<!-- Small command palette button -->
-						<button
-							onclick={openPalette}
-							title="Commands (Ctrl+K)"
-							class="cmd-btn"
-							aria-label="Open commands"
-						>
-							<svg width="13" height="13" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-								<circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" stroke-width="1.5"/>
-								<path d="M13.5 13.5L17 17" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-							</svg>
-							<kbd>Ctrl K</kbd>
-						</button>
-					</div>
-				</div>
-			{:else}
-				<!-- Mobile rename -->
-				{#if renaming}
-					<div class="mobile-rename">
-						<input
-							bind:this={renameInput}
-							bind:value={renameValue}
-							onkeydown={onRenameKeydown}
-							onblur={confirmRename}
-							class="rename-input"
-							style="width: 100%;"
-						/>
-						{#if renameError}
-							<span class="rename-error">{renameError}</span>
-						{/if}
-					</div>
-				{/if}
-			{/if}
+			<TitleBar
+				{selected}
+				{saving}
+				{saveFailed}
+				{isLocked}
+				{focusMode}
+				{isMobile}
+				bind:renaming
+				bind:renameValue
+				renameError={renameError}
+				onStartRename={startRename}
+				onConfirmRename={confirmRename}
+				onCancelRename={cancelRename}
+				onToggleLock={toggleLock}
+				onToggleFocus={() => (focusMode = !focusMode)}
+				onOpenPalette={openPalette}
+			/>
 
 			{#if showToc && !focusMode}
 				<TableOfContents {headings} onDisable={disableToc} />
@@ -575,63 +491,6 @@
 		padding: 0 0.25rem;
 	}
 
-	/* ── Desktop title bar ───────────────────────────────────── */
-	.titlebar {
-		padding: 0.4rem 1rem;
-		border-bottom: 1px solid var(--border);
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		flex-shrink: 0;
-	}
-
-	.title-btn {
-		background: none;
-		border: none;
-		padding: 0;
-		cursor: text;
-		font-weight: 600;
-		font-size: 1.05rem;
-		letter-spacing: -0.02em;
-		color: var(--text);
-		font-family: inherit;
-	}
-
-	.titlebar-actions {
-		display: flex;
-		align-items: center;
-		gap: 1rem;
-	}
-
-	.saving-label {
-		font-size: 0.8rem;
-		color: var(--muted);
-	}
-
-	.cmd-btn {
-		background: var(--sidebar-bg);
-		border: 1px solid var(--border);
-		border-radius: 6px;
-		padding: 0.2rem 0.5rem;
-		font-size: 0.75rem;
-		color: var(--muted);
-		cursor: pointer;
-		display: flex;
-		align-items: center;
-		gap: 0.4rem;
-		font-family: inherit;
-	}
-
-	.cmd-btn:hover {
-		background: var(--border);
-	}
-
-	.cmd-btn kbd {
-		font-family: inherit;
-		font-size: 0.7rem;
-	}
-
-
 	/* ── Focus mode ─────────────────────────────────────────────── */
 	.editor-area {
 		display: flex;
@@ -655,84 +514,6 @@
 
 	.editor-area.focus-mode :global(.editor-wrap::-webkit-scrollbar) {
 		display: none;
-	}
-
-	.focus-btn {
-		background: none;
-		border: none;
-		cursor: pointer;
-		color: var(--muted);
-		padding: 0.25rem;
-		border-radius: 5px;
-		display: flex;
-		align-items: center;
-		opacity: 0.4;
-		transition: opacity 0.15s, color 0.15s;
-	}
-
-	.focus-btn:hover {
-		opacity: 1;
-	}
-
-	.focus-btn.active {
-		opacity: 1;
-		color: var(--accent);
-	}
-
-	.lock-btn {
-		background: none;
-		border: none;
-		cursor: pointer;
-		color: var(--muted);
-		padding: 0.25rem;
-		border-radius: 5px;
-		display: flex;
-		align-items: center;
-		opacity: 0.4;
-		transition: opacity 0.15s, color 0.15s;
-	}
-
-	.lock-btn:hover {
-		opacity: 1;
-	}
-
-	.lock-btn.locked {
-		opacity: 1;
-		color: var(--color-warning);
-	}
-
-	/* ── Rename ──────────────────────────────────────────────── */
-	.rename-row {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.rename-input {
-		font-weight: 500;
-		font-size: 0.95rem;
-		background: none;
-		border: none;
-		border-bottom: 1.5px solid var(--accent);
-		outline: none;
-		color: var(--text);
-		font-family: inherit;
-		padding: 0 0.1rem;
-		min-width: 8rem;
-		max-width: 100%;
-	}
-
-	.rename-error {
-		font-size: 0.75rem;
-		color: var(--color-danger);
-	}
-
-	.mobile-rename {
-		padding: 0.4rem 1rem;
-		border-bottom: 1px solid var(--border);
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
 	}
 
 	/* ── Empty state ─────────────────────────────────────────── */

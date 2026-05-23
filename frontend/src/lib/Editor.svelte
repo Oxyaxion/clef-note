@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
-	import { Editor, Extension, InputRule } from '@tiptap/core';
+	import { Editor, InputRule } from '@tiptap/core';
 	import StarterKit from '@tiptap/starter-kit';
 	import Placeholder from '@tiptap/extension-placeholder';
 	import { Table, TableRow, TableCell, TableHeader } from '@tiptap/extension-table';
@@ -19,62 +19,13 @@
 	import { DrawingBlock } from './drawingBlock';
 	import { makeCodeBlockNodeView } from './codeBlockNodeView';
 	import { ResizableImage } from './resizableImage';
+	import { ExitBlockquote, ExitEmptyListItem } from './editorExtensions';
 	import BubbleMenu from './BubbleMenu.svelte';
 	import LinkPrompt from './LinkPrompt.svelte';
 	import TableToolbar from './TableToolbar.svelte';
 	import 'tippy.js/dist/tippy.css';
 
 	const lowlight = createLowlight(common);
-
-	const ExitBlockquote = Extension.create({
-		name: 'exitBlockquote',
-		priority: 1001,
-		addKeyboardShortcuts() {
-			return {
-				'Mod-Enter': () => {
-					const sel = this.editor.state.selection;
-					const from = sel.$from;
-
-					let bqDepth = -1;
-					for (let d = from.depth; d > 0; d--) {
-						if (from.node(d).type.name === 'blockquote') { bqDepth = d; break; }
-					}
-					if (bqDepth === -1) return false;
-
-					// Insert a paragraph right after the blockquote and move cursor there
-					return this.editor.chain()
-						.insertContentAt(from.after(bqDepth), { type: 'paragraph' })
-						.run();
-				},
-			};
-		},
-	});
-
-	const ExitEmptyListItem = Extension.create({
-		name: 'exitEmptyListItem',
-		priority: 1001,
-		addKeyboardShortcuts() {
-			return {
-				Enter: () => {
-					const { selection } = this.editor.state;
-					if (!selection.empty) return false;
-					const anchor = selection.$anchor;
-					for (let d = anchor.depth; d > 0; d--) {
-						const node = anchor.node(d);
-						if (node.type.name === 'listItem' || node.type.name === 'taskItem') {
-							// firstChild is the paragraph/block inside the listItem;
-							// childCount === 0 means truly empty (no text, no atoms)
-							if ((node.firstChild?.childCount ?? 0) === 0) {
-								return this.editor.commands.liftListItem(node.type);
-							}
-							return false;
-						}
-					}
-					return false;
-				},
-			};
-		},
-	});
 
 	interface Props {
 		noteContent: string;
@@ -452,49 +403,6 @@
 		border-radius: 0;
 		color: var(--text);
 	}
-
-	/* ── Syntax highlighting tokens (light) ─────────────── */
-	:global(.hljs-comment), :global(.hljs-quote)                    { color: #6a737d; font-style: italic; }
-	:global(.hljs-keyword), :global(.hljs-selector-tag)             { color: #d73a49; }
-	:global(.hljs-string),  :global(.hljs-regexp), :global(.hljs-addition) { color: #032f62; }
-	:global(.hljs-number),  :global(.hljs-literal)                  { color: #005cc5; }
-	:global(.hljs-type),    :global(.hljs-params)                   { color: #6f42c1; }
-	:global(.hljs-title),   :global(.hljs-section), :global(.hljs-built_in) { color: #6f42c1; font-weight: 600; }
-	:global(.hljs-attr),    :global(.hljs-attribute), :global(.hljs-name)   { color: #005cc5; }
-	:global(.hljs-variable),:global(.hljs-template-variable)        { color: #e36209; }
-	:global(.hljs-meta)                                              { color: #6a737d; }
-	:global(.hljs-deletion)                                          { color: #b31d28; }
-
-	/* ── Dark mode overrides ─────────────────────────────── */
-	@media (prefers-color-scheme: dark) {
-		:global(.hljs-comment), :global(.hljs-quote)                { color: #8b949e; }
-		:global(.hljs-keyword), :global(.hljs-selector-tag)         { color: #ff7b72; }
-		:global(.hljs-string),  :global(.hljs-regexp), :global(.hljs-addition) { color: #a5d6ff; }
-		:global(.hljs-number),  :global(.hljs-literal)              { color: #79c0ff; }
-		:global(.hljs-type),    :global(.hljs-params)               { color: #ffa657; }
-		:global(.hljs-title),   :global(.hljs-section), :global(.hljs-built_in) { color: #d2a8ff; }
-		:global(.hljs-attr),    :global(.hljs-attribute), :global(.hljs-name)   { color: #79c0ff; }
-		:global(.hljs-variable),:global(.hljs-template-variable)    { color: #ffa657; }
-		:global(.hljs-meta)                                          { color: #8b949e; }
-	}
-
-	/* GitHub Dark theme overrides */
-	:global([data-theme="github-dark"] .hljs-comment),
-	:global([data-theme="github-dark"] .hljs-quote)                 { color: #8b949e; }
-	:global([data-theme="github-dark"] .hljs-keyword),
-	:global([data-theme="github-dark"] .hljs-selector-tag)          { color: #ff7b72; }
-	:global([data-theme="github-dark"] .hljs-string),
-	:global([data-theme="github-dark"] .hljs-addition)              { color: #a5d6ff; }
-	:global([data-theme="github-dark"] .hljs-number),
-	:global([data-theme="github-dark"] .hljs-literal)               { color: #79c0ff; }
-	:global([data-theme="github-dark"] .hljs-type),
-	:global([data-theme="github-dark"] .hljs-params)                { color: #ffa657; }
-	:global([data-theme="github-dark"] .hljs-title),
-	:global([data-theme="github-dark"] .hljs-built_in)              { color: #d2a8ff; }
-	:global([data-theme="github-dark"] .hljs-attr),
-	:global([data-theme="github-dark"] .hljs-name)                  { color: #79c0ff; }
-	:global([data-theme="github-dark"] .hljs-variable)              { color: #ffa657; }
-	:global([data-theme="github-dark"] .hljs-meta)                  { color: #8b949e; }
 
 	/* Blockquote */
 	:global(.tiptap-editor blockquote) {
