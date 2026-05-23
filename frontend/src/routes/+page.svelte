@@ -65,6 +65,7 @@
 		headings.length >= 2 && noteFrontmatter.toc !== false
 	);
 
+	const noteNames = $derived(notes.map(n => n.name));
 	const isIndex = $derived(noteFrontmatter.type === 'index');
 	const isLocked = $derived(noteFrontmatter.locked === true);
 
@@ -155,7 +156,7 @@
 
 	async function createNote(name: string) {
 		await saveNote(name, '');
-		notes = await listNotes();
+		notes = [...notes, { name, pinned: false }];
 		await selectNote(name);
 	}
 
@@ -214,9 +215,10 @@
 		const newName = renameValue.trim();
 		if (!newName || newName === selected) return;
 		if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+		const oldName = selected;
 		try {
-			await renameNote(selected, newName);
-			notes = await listNotes();
+			await renameNote(oldName, newName);
+			notes = notes.map(n => n.name === oldName ? { ...n, name: newName } : n);
 			selected = newName;
 			document.dispatchEvent(new CustomEvent('notes:changed'));
 		} catch (e: unknown) {
@@ -238,7 +240,7 @@
 		noteContent = '';
 		noteFrontmatter = {};
 		await deleteNote(name);
-		notes = await listNotes();
+		notes = notes.filter(n => n.name !== name);
 		document.dispatchEvent(new CustomEvent('notes:changed'));
 	}
 
@@ -399,7 +401,7 @@
 						frontmatter={noteFrontmatter}
 						onChange={onFrontmatterChange}
 					/>
-					<Editor {noteContent} noteNames={notes.map(n => n.name)} {onEdit} {isIndex} {isLocked} />
+					<Editor {noteContent} {noteNames} {onEdit} {isIndex} {isLocked} />
 				{/key}
 			</div>
 			{#if !focusMode}
