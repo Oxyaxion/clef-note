@@ -30,6 +30,10 @@
 		fetchKeys().then(k => { apiKey = k.api_key; }).catch(() => {});
 	});
 
+	function focusTrap(el: HTMLElement) {
+		el.focus();
+	}
+
 	function copyApiKey() {
 		navigator.clipboard.writeText(apiKey);
 		apiKeyCopied = true;
@@ -70,7 +74,7 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="backdrop" onmousedown={onBackdropClick}>
-	<div class="modal" role="dialog" aria-label="Settings" aria-modal="true">
+	<div class="modal" role="dialog" aria-label="Settings" aria-modal="true" use:focusTrap tabindex="-1">
 
 		<div class="modal-header">
 			<span class="modal-title">Settings</span>
@@ -285,6 +289,7 @@
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
+		outline: none;
 	}
 
 	/* ── Header ────────────────────────────────────────── */
