@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { THEMES, type ThemeId } from './theme';
 	import { applySettings, DEFAULT, FONT_PRESETS, DATE_FORMATS, type AppSettings } from './settings';
 	import { fetchKeys, putSettings } from './api';
@@ -26,7 +26,9 @@
 	let appearanceOpen = $state(true);
 	let securityOpen = $state(false);
 
-	fetchKeys().then(k => { apiKey = k.api_key; });
+	onMount(() => {
+		fetchKeys().then(k => { apiKey = k.api_key; }).catch(() => {});
+	});
 
 	function copyApiKey() {
 		navigator.clipboard.writeText(apiKey);
