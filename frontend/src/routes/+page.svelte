@@ -29,6 +29,7 @@
 	import { createNavigation } from '$lib/navigation.svelte';
 	import TitleBar from '$lib/TitleBar.svelte';
 	import MobileTopBar from '$lib/MobileTopBar.svelte';
+	import ConfirmDialog from '$lib/ConfirmDialog.svelte';
 
 	let notes = $state<NoteMeta[]>([]);
 	let selected = $state<string | null>(null);
@@ -52,6 +53,7 @@
 	let currentSettings = $state<AppSettings>({ ...DEFAULT });
 	const nav = createNavigation();
 	let focusMode = $state(false);
+	let confirmDialog = $state<{ message: string; onConfirm: () => void } | null>(null);
 
 
 	const noteMarkdown = $derived(serializeFrontmatter(noteFrontmatter) + noteContent);
@@ -229,16 +231,21 @@
 		renameError = '';
 	}
 
-	async function handleDelete() {
+	function handleDelete() {
 		if (!selected) return;
-		if (!confirm(`Delete "${selected}"? This action cannot be undone.`)) return;
 		const name = selected;
-		selected = null;
-		noteContent = '';
-		noteFrontmatter = {};
-		await deleteNote(name);
-		notes = notes.filter(n => n.name !== name);
-		document.dispatchEvent(new CustomEvent('notes:changed'));
+		confirmDialog = {
+			message: `Delete "${name}"? This action cannot be undone.`,
+			onConfirm: async () => {
+				confirmDialog = null;
+				selected = null;
+				noteContent = '';
+				noteFrontmatter = {};
+				await deleteNote(name);
+				notes = notes.filter(n => n.name !== name);
+				emit(document, 'notes:changed');
+			},
+		};
 	}
 
 	function toggleLock() {
@@ -289,6 +296,15 @@
 {#if !loggedIn}
 	<LoginPage onLogin={() => { loggedIn = true; }} />
 {:else}
+
+{#if confirmDialog}
+	<ConfirmDialog
+		message={confirmDialog.message}
+		confirmLabel="Delete"
+		onConfirm={confirmDialog.onConfirm}
+		onCancel={() => (confirmDialog = null)}
+	/>
+{/if}
 
 {#if settingsOpen}
 	<Settings
