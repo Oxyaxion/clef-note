@@ -1,6 +1,7 @@
 import { Extension } from '@tiptap/core';
 import { EMOJI_MAP } from './emojiShortcodes';
 import { emit } from './events';
+import { getDateFormat, setDateFormat } from './dateFormat.svelte';
 import Suggestion, {
 	type SuggestionProps,
 	type SuggestionKeyDownProps,
@@ -17,12 +18,11 @@ const SlashInputTrackerKey = new PluginKey('slashInputTracker');
 // moved to an existing '/' via mouse click or arrow keys.
 let docJustChanged = false;
 
-let _dateFormat = 'long-en';
-export function setDateFormat(fmt: string) { _dateFormat = fmt; }
+export { setDateFormat } from './dateFormat.svelte';
 
 function formatDate(): string {
 	const d = new Date();
-	switch (_dateFormat) {
+	switch (getDateFormat()) {
 		case 'eu':  return d.toLocaleDateString('fr-FR');
 		case 'iso': return d.toISOString().slice(0, 10);
 		case 'us':  return d.toLocaleDateString('en-US');
@@ -32,7 +32,7 @@ function formatDate(): string {
 
 function formatTimestamp(): string {
 	const d = new Date();
-	switch (_dateFormat) {
+	switch (getDateFormat()) {
 		case 'eu':  return `${d.toLocaleDateString('fr-FR')} ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
 		case 'iso': return d.toISOString().slice(0, 16).replace('T', ' ');
 		case 'us':  return d.toLocaleString('en-US');
