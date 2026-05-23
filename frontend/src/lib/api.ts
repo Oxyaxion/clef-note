@@ -111,8 +111,8 @@ export async function renameNote(oldName: string, newName: string): Promise<void
         headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ new_name: newName }),
     });
-    if (res.status === 409) throw new Error('Une note avec ce nom existe déjà');
-    if (!res.ok) throw new Error('Échec du renommage');
+    if (res.status === 409) throw new Error('A note with that name already exists');
+    if (!res.ok) throw new Error('Rename failed');
 }
 
 export async function getBacklinks(name: string): Promise<BacklinksResponse> {
