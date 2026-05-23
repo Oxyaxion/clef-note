@@ -115,8 +115,8 @@ export async function renameNote(oldName: string, newName: string): Promise<void
     if (!res.ok) throw new Error('Rename failed');
 }
 
-export async function getBacklinks(name: string): Promise<BacklinksResponse> {
-    const res = await apiFetch(`${BASE}/backlinks/${encodeName(name)}`, { headers: authHeaders() });
+export async function getBacklinks(name: string, signal?: AbortSignal): Promise<BacklinksResponse> {
+    const res = await apiFetch(`${BASE}/backlinks/${encodeName(name)}`, { headers: authHeaders(), signal });
     if (!res.ok) throw new Error('Failed to fetch backlinks');
     return res.json();
 }

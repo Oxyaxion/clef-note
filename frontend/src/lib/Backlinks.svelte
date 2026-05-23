@@ -13,12 +13,12 @@
 
 	$effect(() => {
 		const n = note;
-		let cancelled = false;
 		open = false;
-		getBacklinks(n)
-			.then((r) => { if (!cancelled) backlinks = r.backlinks; })
-			.catch(() =>  { if (!cancelled) backlinks = []; });
-		return () => { cancelled = true; };
+		const ctrl = new AbortController();
+		getBacklinks(n, ctrl.signal)
+			.then((r) => { backlinks = r.backlinks; })
+			.catch((e) => { if (!(e instanceof DOMException && e.name === 'AbortError')) backlinks = []; });
+		return () => { ctrl.abort(); };
 	});
 
 	function label(name: string): string {
