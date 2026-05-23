@@ -15,6 +15,7 @@
 		saveNote,
 		renameNote,
 		deleteNote,
+		getSettings,
 		serializeFrontmatter,
 		session,
 		logout,
@@ -24,7 +25,6 @@
 	import { loadTheme, applyTheme, type ThemeId } from '$lib/theme';
 	import { applySettings, DEFAULT, type AppSettings } from '$lib/settings';
 	import { setDateFormat } from '$lib/slashCommands';
-	import { getSettings } from '$lib/api';
 	import { emit, on } from '$lib/events';
 	import { createNavigation } from '$lib/navigation.svelte';
 	import TitleBar from '$lib/TitleBar.svelte';
@@ -250,6 +250,12 @@
 		paletteOpen = true;
 	}
 
+	function onSettingsChange(s: AppSettings) {
+		vaultName = s.vaultName ?? 'Notes';
+		currentSettings = s;
+		setDateFormat(s.dateFormat ?? 'long-en');
+	}
+
 	function openSettings() {
 		settingsOpen = true;
 	}
@@ -286,7 +292,7 @@
 		onClose={() => (settingsOpen = false)}
 		onSetTheme={(id) => { currentTheme = id; applyTheme(id); }}
 		onLogout={async () => { await logout(); loggedIn = false; }}
-		onSettingsChange={(s: AppSettings) => { vaultName = s.vaultName ?? 'Notes'; currentSettings = s; setDateFormat(s.dateFormat ?? 'long-en'); }}
+		{onSettingsChange}
 	/>
 {/if}
 
