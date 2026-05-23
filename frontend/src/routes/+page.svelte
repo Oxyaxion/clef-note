@@ -25,6 +25,7 @@
 	import { applySettings, DEFAULT, type AppSettings } from '$lib/settings';
 	import { setDateFormat } from '$lib/slashCommands';
 	import { getSettings } from '$lib/api';
+	import { emit, on } from '$lib/events';
 	import TitleBar from '$lib/TitleBar.svelte';
 
 	let notes = $state<NoteMeta[]>([]);
@@ -73,11 +74,7 @@
 		onFrontmatterChange({ ...noteFrontmatter, toc: false });
 	}
 
-	onMount(() => {
-		const onAuthExpired = () => { loggedIn = false; };
-		window.addEventListener('auth:expired', onAuthExpired);
-		return () => window.removeEventListener('auth:expired', onAuthExpired);
-	});
+	onMount(() => on(window, 'auth:expired', () => { loggedIn = false; }));
 
 	// Runs immediately if already logged in, or re-runs after login.
 	// onMount alone is not enough: when a user logs in, onMount has already
@@ -100,16 +97,14 @@
 			if (home) selectNote(home).catch(() => {});
 		});
 
-		const handler = (e: Event) => {
-			const target = (e as CustomEvent<string>).detail;
+		const offWikiNav = on(document, 'wiki-navigate', (target) => {
 			if (!target) return;
 			const exact = notes.find(n => n.name === target);
 			const resolved = exact
 				?? notes.find(n => n.name.split('/').pop() === target)
 				?? notes.find(n => n.name.toLowerCase().split('/').pop() === target.toLowerCase());
 			selectNote(resolved?.name ?? target).catch(() => {});
-		};
-		document.addEventListener('wiki-navigate', handler);
+		});
 
 		const mq = window.matchMedia('(max-width: 640px)');
 		isMobile = mq.matches;
@@ -117,7 +112,7 @@
 		mq.addEventListener('change', mqHandler);
 
 		return () => {
-			document.removeEventListener('wiki-navigate', handler);
+			offWikiNav();
 			mq.removeEventListener('change', mqHandler);
 		};
 	});
@@ -220,7 +215,7 @@
 			await renameNote(oldName, newName);
 			notes = notes.map(n => n.name === oldName ? { ...n, name: newName } : n);
 			selected = newName;
-			document.dispatchEvent(new CustomEvent('notes:changed'));
+			emit(document, 'notes:changed');
 		} catch (e: unknown) {
 			renameError = e instanceof Error ? e.message : 'Rename failed';
 			renaming = true;

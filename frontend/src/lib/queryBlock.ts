@@ -1,6 +1,7 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { queryNotes, listTags, getFieldValues, type NoteQueryResult, type TagCount } from './api';
+import { emit, on } from './events';
 
 // ── Autocomplete token detection ──────────────────────────────────────────────
 
@@ -270,7 +271,7 @@ export const QueryBlock = Node.create({
                 btn.className = 'query-result-name';
                 btn.textContent = text;
                 btn.addEventListener('click', () => {
-                    document.dispatchEvent(new CustomEvent('wiki-navigate', { detail: row.name }));
+                    emit(document, 'wiki-navigate', row.name);
                 });
                 return btn;
             }
@@ -573,8 +574,9 @@ export const QueryBlock = Node.create({
 
             fetchResults(node.attrs.query ?? '');
 
-            const onNotesChanged = () => fetchResults(currentNode.attrs.query ?? '');
-            document.addEventListener('notes:changed', onNotesChanged);
+            const offNotesChanged = on(document, 'notes:changed',
+                () => fetchResults(currentNode.attrs.query ?? '')
+            );
 
             return {
                 dom,
@@ -596,7 +598,7 @@ export const QueryBlock = Node.create({
                 },
                 destroy() {
                     if (debounceTimer) clearTimeout(debounceTimer);
-                    document.removeEventListener('notes:changed', onNotesChanged);
+                    offNotesChanged();
                 },
             };
         };

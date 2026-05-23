@@ -2,6 +2,7 @@
 	import { searchContent, queryNotes, listTags, uploadAsset, type NoteMeta, type SearchResult, type NoteQueryResult, type TagCount } from './api';
 	import { THEMES, type ThemeId } from './theme';
 	import { escapeHtml } from './utils';
+	import { emit } from './events';
 
 	interface Command {
 		id: string;
@@ -161,7 +162,7 @@
 						if (!file) return;
 						try {
 							const url = await uploadAsset(file);
-							document.dispatchEvent(new CustomEvent('insert-image', { detail: url }));
+							emit(document, 'insert-image', url);
 						} catch (err) {
 							console.error('Image upload failed', err);
 						}

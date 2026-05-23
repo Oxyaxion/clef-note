@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import type { Editor } from '@tiptap/core';
+	import { emit, on } from './events';
 
 	interface Props {
 		editor: Editor;
@@ -48,9 +49,9 @@
 		tooltipOpen = true;
 	}
 
-	async function openPrompt(e: Event) {
+	async function openPrompt(detail: { x: number; y: number; currentUrl: string; selectedText: string }) {
 		tooltipOpen = false;
-		const { x, y, currentUrl, selectedText } = (e as CustomEvent).detail;
+		const { x, y, currentUrl, selectedText } = detail;
 		promptUrl = currentUrl ?? '';
 		promptText = '';
 		hasExisting = !!currentUrl;
@@ -100,10 +101,10 @@
 		tooltipOpen = false;
 		const { from } = editor.state.selection;
 		const coords = editor.view.coordsAtPos(from);
-		editor.view.dom.dispatchEvent(new CustomEvent('link-prompt', {
-			bubbles: true,
-			detail: { x: coords.left, y: coords.bottom + 8, currentUrl: tooltipHref, selectedText: '' },
-		}));
+		emit(editor.view.dom, 'link-prompt',
+			{ x: coords.left, y: coords.bottom + 8, currentUrl: tooltipHref, selectedText: '' },
+			{ bubbles: true }
+		);
 	}
 
 	function removeFromTooltip() {
@@ -125,8 +126,7 @@
 
 	$effect(() => {
 		// link-prompt is dispatched on editor.view.dom with bubbles:true — it reaches document
-		document.addEventListener('link-prompt', openPrompt);
-		return () => document.removeEventListener('link-prompt', openPrompt);
+		return on(document, 'link-prompt', openPrompt);
 	});
 </script>
 

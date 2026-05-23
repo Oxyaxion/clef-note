@@ -1,5 +1,6 @@
 import { Extension } from '@tiptap/core';
 import { EMOJI_MAP } from './emojiShortcodes';
+import { emit } from './events';
 import Suggestion, {
 	type SuggestionProps,
 	type SuggestionKeyDownProps,
@@ -191,10 +192,10 @@ export const ALL_ITEMS: CommandItem[] = [
 			editor.chain().focus().deleteRange(range).run();
 			const { from } = editor.state.selection;
 			const coords = editor.view.coordsAtPos(from);
-			editor.view.dom.dispatchEvent(new CustomEvent('link-prompt', {
-				bubbles: true,
-				detail: { x: coords.left, y: coords.bottom + 8, currentUrl: '', selectedText: '' },
-			}));
+			emit(editor.view.dom, 'link-prompt',
+				{ x: coords.left, y: coords.bottom + 8, currentUrl: '', selectedText: '' },
+				{ bubbles: true }
+			);
 		},
 	},
 

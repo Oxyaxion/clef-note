@@ -1,4 +1,5 @@
 import { Node, mergeAttributes, InputRule } from '@tiptap/core';
+import { emit } from './events';
 
 const WIKI_LINK_RE = /\[\[([^\]]+)\]\]$/;
 
@@ -83,9 +84,7 @@ export const WikiLink = Node.create({
 			dom.addEventListener('click', (e) => {
 				e.preventDefault();
 				e.stopPropagation();
-				document.dispatchEvent(
-					new CustomEvent('wiki-navigate', { detail: node.attrs.target })
-				);
+				emit(document, 'wiki-navigate', node.attrs.target);
 			});
 			return { dom };
 		};

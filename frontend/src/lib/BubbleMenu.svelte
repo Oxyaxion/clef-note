@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Editor } from '@tiptap/core';
+	import { emit } from './events';
 
 	let { editor }: { editor: Editor } = $props();
 
@@ -54,15 +55,12 @@
 	function openLinkPrompt() {
 		const { from, to, empty } = editor.state.selection;
 		const coords = editor.view.coordsAtPos(from);
-		editor.view.dom.dispatchEvent(new CustomEvent('link-prompt', {
-			bubbles: true,
-			detail: {
-				x: coords.left,
-				y: coords.bottom + 8,
-				currentUrl: editor.getAttributes('link').href ?? '',
-				selectedText: empty ? '' : editor.state.doc.textBetween(from, to),
-			},
-		}));
+		emit(editor.view.dom, 'link-prompt', {
+			x: coords.left,
+			y: coords.bottom + 8,
+			currentUrl: editor.getAttributes('link').href ?? '',
+			selectedText: empty ? '' : editor.state.doc.textBetween(from, to),
+		}, { bubbles: true });
 	}
 </script>
 

@@ -23,6 +23,7 @@
 	import BubbleMenu from './BubbleMenu.svelte';
 	import LinkPrompt from './LinkPrompt.svelte';
 	import TableToolbar from './TableToolbar.svelte';
+	import { emit, on } from './events';
 	import 'tippy.js/dist/tippy.css';
 
 	const lowlight = createLowlight(common);
@@ -46,15 +47,10 @@
 	// DOM-level handlers stored here so onDestroy can remove them
 	let _imgPasteHandler: ((e: ClipboardEvent) => void) | null = null;
 	let _imgDropHandler: ((e: DragEvent) => void) | null = null;
+	let _offInsertImage: (() => void) | null = null;
 
 	function getMarkdown(ed: Editor): string {
 		return (ed.storage as unknown as { markdown: MarkdownStorage }).markdown.getMarkdown();
-	}
-
-	// Custom event handler for palette-triggered image insertion (same pattern as wiki-navigate)
-	function onInsertImageEvent(e: Event) {
-		const url = (e as CustomEvent<string>).detail;
-		if (url) editor?.chain().focus().setImage({ src: url }).run();
 	}
 
 	// Reload aliases whenever the note list changes
@@ -112,15 +108,12 @@
 								const ed = this.editor;
 								const { from, to, empty } = ed.state.selection;
 								const coords = ed.view.coordsAtPos(from);
-								ed.view.dom.dispatchEvent(new CustomEvent('link-prompt', {
-									bubbles: true,
-									detail: {
-										x: coords.left,
-										y: coords.bottom + 8,
-										currentUrl: ed.getAttributes('link').href ?? '',
-										selectedText: empty ? '' : ed.state.doc.textBetween(from, to),
-									},
-								}));
+								emit(ed.view.dom, 'link-prompt', {
+									x: coords.left,
+									y: coords.bottom + 8,
+									currentUrl: ed.getAttributes('link').href ?? '',
+									selectedText: empty ? '' : ed.state.doc.textBetween(from, to),
+								}, { bubbles: true });
 								return true;
 							},
 						};
@@ -148,7 +141,9 @@
 			},
 		});
 
-		document.addEventListener('insert-image', onInsertImageEvent);
+		_offInsertImage = on(document, 'insert-image', (url) => {
+			editor?.chain().focus().setImage({ src: url }).run();
+		});
 
 		// Capture-phase listeners run before ProseMirror sees the event.
 		// Return early (without stopImmediatePropagation) for non-image pastes so
@@ -200,7 +195,7 @@
 	});
 
 	onDestroy(() => {
-		document.removeEventListener('insert-image', onInsertImageEvent);
+		_offInsertImage?.();
 		if (_imgPasteHandler) element.removeEventListener('paste', _imgPasteHandler as EventListener, true);
 		if (_imgDropHandler) element.removeEventListener('drop', _imgDropHandler as EventListener, true);
 		editor?.destroy();

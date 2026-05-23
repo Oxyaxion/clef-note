@@ -1,3 +1,5 @@
+import { emit } from './events';
+
 const BASE = import.meta.env.VITE_API_BASE ?? '';
 
 const TOKEN_KEY = 'clef_token';
@@ -20,7 +22,7 @@ async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
     const res = await fetch(url, init);
     if (res.status === 401) {
         session.clear();
-        window.dispatchEvent(new CustomEvent('auth:expired'));
+        emit(window, 'auth:expired');
     }
     return res;
 }
