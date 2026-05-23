@@ -27,6 +27,7 @@
 	import { setDateFormat } from '$lib/slashCommands';
 	import { emit, on } from '$lib/events';
 	import { createNavigation } from '$lib/navigation.svelte';
+	import { createAutoSave } from '$lib/autoSave.svelte';
 	import TitleBar from '$lib/TitleBar.svelte';
 	import MobileTopBar from '$lib/MobileTopBar.svelte';
 	import ConfirmDialog from '$lib/ConfirmDialog.svelte';
@@ -35,9 +36,13 @@
 	let selected = $state<string | null>(null);
 	let noteContent = $state('');
 	let noteFrontmatter = $state<Frontmatter>({});
-	let saveTimer: ReturnType<typeof setTimeout> | null = null;
-	let saving = $state(false);
-	let saveFailed = $state(false);
+	const autoSave = createAutoSave((name, fm) => {
+		notes = notes.map(n =>
+			n.name === name
+				? { ...n, pinned: fm.pinned === true, is_index: fm.type === 'index', is_template: fm.type === 'template' }
+				: n
+		);
+	});
 	let paletteOpen = $state(false);
 	let sidebarOpen = $state(false);   // mobile drawer state
 	let renaming = $state(false);
@@ -125,7 +130,7 @@
 	});
 
 	async function selectNote(name: string, pushHistory = true) {
-		if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+		autoSave.cancel();
 		const note = await getNote(name);
 		noteFrontmatter = (note.frontmatter ?? {}) as Frontmatter;
 		noteContent = note.content;
@@ -159,28 +164,6 @@
 		await selectNote(name);
 	}
 
-	function triggerSave(name: string, fm: Frontmatter, body: string) {
-		if (saveTimer) clearTimeout(saveTimer);
-		saveTimer = setTimeout(async () => {
-			saving = true;
-			saveFailed = false;
-			try {
-				const fullContent = serializeFrontmatter(fm) + body;
-				await saveNote(name, fullContent);
-				// Derive metadata locally — avoids a full round-trip on every keystroke
-				notes = notes.map(n =>
-					n.name === name
-						? { ...n, pinned: fm.pinned === true, is_index: fm.type === 'index', is_template: fm.type === 'template' }
-						: n
-				);
-			} catch {
-				saveFailed = true;
-			} finally {
-				saving = false;
-			}
-		}, 800);
-	}
-
 	function onEdit(markdown: string) {
 		if (!selected) return;
 		noteContent = markdown;
@@ -192,13 +175,13 @@
 				noteFrontmatter = { ...noteFrontmatter, title: h1Text };
 			}
 		}
-		triggerSave(selected, noteFrontmatter, markdown);
+		autoSave.schedule(selected, noteFrontmatter, markdown);
 	}
 
 	function onFrontmatterChange(fm: Frontmatter) {
 		if (!selected) return;
 		noteFrontmatter = fm;
-		triggerSave(selected, fm, noteContent);
+		autoSave.schedule(selected, fm, noteContent);
 	}
 
 	function startRename() {
@@ -213,7 +196,7 @@
 		renaming = false;
 		const newName = renameValue.trim();
 		if (!newName || newName === selected) return;
-		if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+		autoSave.cancel();
 		const oldName = selected;
 		try {
 			await renameNote(oldName, newName);
@@ -368,8 +351,8 @@
 		{:else if selected}
 			<TitleBar
 				{selected}
-				{saving}
-				{saveFailed}
+				saving={autoSave.saving}
+				saveFailed={autoSave.saveFailed}
 				{isLocked}
 				{focusMode}
 				{isMobile}
