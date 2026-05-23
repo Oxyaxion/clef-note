@@ -59,6 +59,7 @@
 	const nav = createNavigation();
 	let focusMode = $state(false);
 	let confirmDialog = $state<{ message: string; onConfirm: () => void } | null>(null);
+	let loadError = $state<string | null>(null);
 
 
 	const noteMarkdown = $derived(serializeFrontmatter(noteFrontmatter) + noteContent);
@@ -131,13 +132,18 @@
 
 	async function selectNote(name: string, pushHistory = true) {
 		autoSave.cancel();
-		const note = await getNote(name);
-		noteFrontmatter = (note.frontmatter ?? {}) as Frontmatter;
-		noteContent = note.content;
-		selected = name;
-		sidebarOpen = false;
-		metaPageOpen = false;
-		if (pushHistory) nav.push(name);
+		loadError = null;
+		try {
+			const note = await getNote(name);
+			noteFrontmatter = (note.frontmatter ?? {}) as Frontmatter;
+			noteContent = note.content;
+			selected = name;
+			sidebarOpen = false;
+			metaPageOpen = false;
+			if (pushHistory) nav.push(name);
+		} catch {
+			loadError = `Could not load "${name}". The note may have been deleted or the server is unreachable.`;
+		}
 	}
 
 	function goBack() {
@@ -382,6 +388,11 @@
 			{#if !focusMode}
 				<Backlinks note={selected} onNavigate={selectNote} />
 			{/if}
+		{:else if loadError}
+			<div class="empty-state error-state">
+				<p class="error-msg">{loadError}</p>
+				<button onclick={() => (loadError = null)} class="empty-btn">Dismiss</button>
+			</div>
 		{:else}
 			<div class="empty-state">
 				<p>Select a note or create one</p>
@@ -465,6 +476,9 @@
 		cursor: pointer;
 		font-family: inherit;
 	}
+
+	.error-state { color: var(--color-danger); }
+	.error-msg { font-size: 0.9rem; text-align: center; max-width: 380px; }
 </style>
 
 {/if}
