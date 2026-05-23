@@ -26,6 +26,7 @@
 	import { setDateFormat } from '$lib/slashCommands';
 	import { getSettings } from '$lib/api';
 	import { emit, on } from '$lib/events';
+	import { createNavigation } from '$lib/navigation.svelte';
 	import TitleBar from '$lib/TitleBar.svelte';
 
 	let notes = $state<NoteMeta[]>([]);
@@ -48,8 +49,7 @@
 	let settingsOpen = $state(false);
 	let metaPageOpen = $state(false);
 	let currentSettings = $state<AppSettings>({ ...DEFAULT });
-	let navHistory = $state<string[]>([]);
-	let navIndex = $state(-1);
+	const nav = createNavigation();
 	let focusMode = $state(false);
 
 
@@ -125,22 +125,19 @@
 		selected = name;
 		sidebarOpen = false;
 		metaPageOpen = false;
-		if (pushHistory) {
-			navHistory = [...navHistory.slice(0, navIndex + 1), name];
-			navIndex = navHistory.length - 1;
-		}
+		if (pushHistory) nav.push(name);
 	}
 
 	function goBack() {
-		if (navIndex <= 0) return;
-		const idx = navIndex - 1;
-		selectNote(navHistory[idx], false).then(() => { navIndex = idx; });
+		const target = nav.peekBack();
+		if (!target) return;
+		selectNote(target, false).then(() => nav.stepBack());
 	}
 
 	function goForward() {
-		if (navIndex >= navHistory.length - 1) return;
-		const idx = navIndex + 1;
-		selectNote(navHistory[idx], false).then(() => { navIndex = idx; });
+		const target = nav.peekForward();
+		if (!target) return;
+		selectNote(target, false).then(() => nav.stepForward());
 	}
 
 	function goHome() {
