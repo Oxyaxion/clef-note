@@ -62,7 +62,8 @@
 	let loadError = $state<string | null>(null);
 
 
-	const noteMarkdown = $derived(serializeFrontmatter(noteFrontmatter) + noteContent);
+	const frontmatterMd = $derived(serializeFrontmatter(noteFrontmatter));
+	const noteMarkdown = $derived(frontmatterMd + noteContent);
 
 	const headings = $derived<Heading[]>(
 		Array.from(noteContent.matchAll(/^(#{1,6})\s+(.+?)(?:\s+#+\s*)?$/gm)).map((m) => ({
