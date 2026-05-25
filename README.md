@@ -19,10 +19,6 @@
 - API to queries from the CLI (`scripts/an`).
 - OpenAI compatible endpoint to plug with an LLM.
 
-## Try the demo
-
-**[clef-note.fly.dev](https://clef-note.fly.dev)** · password: `clef-note`
-
 ## Road map
 
 - OpenID Authentication
