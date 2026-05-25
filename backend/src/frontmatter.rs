@@ -50,6 +50,10 @@ fn pod_to_value(pod: &Pod) -> Value {
     }
 }
 
+fn fm_str(fm: &Value, key: &str) -> Option<String> {
+    fm.get(key).and_then(|v| v.as_str()).map(String::from)
+}
+
 fn extract_h1(body: &str) -> Option<String> {
     body.lines()
         .next()
@@ -68,21 +72,9 @@ pub fn parse_note(content: &str) -> ParsedNote {
     let frontmatter = fm_data.as_ref().map(pod_to_value).unwrap_or_default();
     let body = raw_body.trim_start_matches('\n').to_string();
 
-    let title = frontmatter
-        .get("title")
-        .and_then(|v| v.as_str())
-        .map(String::from)
-        .or_else(|| extract_h1(&body));
-
-    let date = frontmatter
-        .get("date")
-        .and_then(|v| v.as_str())
-        .map(String::from);
-
-    let status = frontmatter
-        .get("status")
-        .and_then(|v| v.as_str())
-        .map(String::from);
+    let title = fm_str(&frontmatter, "title").or_else(|| extract_h1(&body));
+    let date = fm_str(&frontmatter, "date");
+    let status = fm_str(&frontmatter, "status");
 
     let mut tags: Vec<String> = match frontmatter.get("tags") {
         Some(Value::Array(arr)) => arr
@@ -132,25 +124,10 @@ pub fn parse_note(content: &str) -> ParsedNote {
         _ => vec![],
     };
 
-    let note_type = frontmatter
-        .get("type")
-        .and_then(|v| v.as_str())
-        .map(String::from);
-
-    let due = frontmatter
-        .get("due")
-        .and_then(|v| v.as_str())
-        .map(String::from);
-
-    let url = frontmatter
-        .get("url")
-        .and_then(|v| v.as_str())
-        .map(String::from);
-
-    let author = frontmatter
-        .get("author")
-        .and_then(|v| v.as_str())
-        .map(String::from);
+    let note_type = fm_str(&frontmatter, "type");
+    let due = fm_str(&frontmatter, "due");
+    let url = fm_str(&frontmatter, "url");
+    let author = fm_str(&frontmatter, "author");
 
     let rating = frontmatter
         .get("rating")
@@ -166,25 +143,10 @@ pub fn parse_note(content: &str) -> ParsedNote {
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
-    let area = frontmatter
-        .get("area")
-        .and_then(|v| v.as_str())
-        .map(String::from);
-
-    let priority = frontmatter
-        .get("priority")
-        .and_then(|v| v.as_str())
-        .map(String::from);
-
-    let project = frontmatter
-        .get("project")
-        .and_then(|v| v.as_str())
-        .map(String::from);
-
-    let last_modified = frontmatter
-        .get("lastModified")
-        .and_then(|v| v.as_str())
-        .map(String::from);
+    let area = fm_str(&frontmatter, "area");
+    let priority = fm_str(&frontmatter, "priority");
+    let project = fm_str(&frontmatter, "project");
+    let last_modified = fm_str(&frontmatter, "lastModified");
 
     ParsedNote {
         frontmatter,
