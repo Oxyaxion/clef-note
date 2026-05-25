@@ -59,12 +59,50 @@ fn open_or_init(storage: &Path) -> Result<Repository, git2::Error> {
 fn ensure_remote(repo: &Repository, url: &str) -> Result<(), git2::Error> {
     match repo.find_remote("origin") {
         Ok(r) if r.url() == Some(url) => {}
-        Ok(_) => {
-            repo.remote_delete("origin")?;
-            repo.remote("origin", url)?;
+        Ok(r) => {
+            warn!(
+                "sync: origin URL changed from {:?} to {url} — updating",
+                r.url().unwrap_or("?")
+            );
+            repo.remote_set_url("origin", url)?;
+        }
+        Err(_) => { repo.remote("origin", url)?; }
+    }
+    Ok(())
+}
+
+/// Ensure HEAD is on `branch`. Handles three cases:
+/// - Already correct → no-op.
+/// - Wrong branch, target doesn't exist → create it from current HEAD (no data loss).
+/// - Wrong branch, target exists with different history → refuse with a clear message.
+/// - Unborn repo → set the target branch as the initial branch name.
+fn ensure_on_branch(repo: &Repository, branch: &str) -> Result<(), String> {
+    match repo.head() {
+        Ok(head) if head.shorthand() == Some(branch) => {}
+        Ok(head) => {
+            let current = head.shorthand().unwrap_or("?").to_string();
+            match repo.find_branch(branch, git2::BranchType::Local) {
+                Ok(_) => {
+                    // Target branch exists but we're not on it — switching could
+                    // overwrite working-directory files, so we refuse and guide the user.
+                    return Err(format!(
+                        "storage repo is on branch '{current}' but [sync] branch is '{branch}'. \
+                        Switch manually: git -C <storage> checkout {branch}"
+                    ));
+                }
+                Err(_) => {
+                    // Target branch doesn't exist — create it from the current HEAD
+                    // so no history or files are lost, then switch to it.
+                    let head_commit = head.peel_to_commit().map_err(|e| e.to_string())?;
+                    repo.branch(branch, &head_commit, false).map_err(|e| e.to_string())?;
+                    repo.set_head(&format!("refs/heads/{branch}")).map_err(|e| e.to_string())?;
+                    warn!("sync: HEAD was on '{current}', created branch '{branch}' from it");
+                }
+            }
         }
         Err(_) => {
-            repo.remote("origin", url)?;
+            // Unborn repo — set the target branch as the initial branch name.
+            repo.set_head(&format!("refs/heads/{branch}")).map_err(|e| e.to_string())?;
         }
     }
     Ok(())
@@ -282,6 +320,7 @@ fn sync_blocking(cfg: &SyncConfig, storage: &Path) -> Result<(), String> {
     let repo = open_or_init(storage).map_err(e)?;
     ensure_gitignore(storage);
     ensure_remote(&repo, &cfg.remote).map_err(e)?;
+    ensure_on_branch(&repo, &cfg.branch)?;
 
     // 1. Commit any pending local changes before touching remote state.
     let ts = Utc::now().format("%Y-%m-%d %H:%M UTC");
