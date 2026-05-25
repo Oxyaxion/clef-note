@@ -80,7 +80,16 @@
 		headings.length >= 2 && noteFrontmatter.toc !== false
 	);
 
-	const noteNames = $derived(notes.map(n => n.name));
+	// Stable reference: only changes when note names actually change, not on every metadata save.
+	let _prevNoteNames: string[] = [];
+	const noteNames = $derived.by(() => {
+		const names = notes.map(n => n.name);
+		if (names.length === _prevNoteNames.length && names.every((n, i) => n === _prevNoteNames[i])) {
+			return _prevNoteNames;
+		}
+		_prevNoteNames = names;
+		return names;
+	});
 	const isIndex = $derived(noteFrontmatter.type === 'index');
 	const isLocked = $derived(noteFrontmatter.locked === true);
 
