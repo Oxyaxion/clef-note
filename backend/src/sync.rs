@@ -225,10 +225,10 @@ fn resolve_conflicts(
         std::fs::write(&full_path, &entry.ours).ok();
 
         // For markdown notes, also write a dedicated conflict note.
-        if entry.path.starts_with("notes/") && entry.path.ends_with(".md") {
-            let relative = &entry.path["notes/".len()..entry.path.len() - 3];
+        // Notes are at the storage root; skip hidden paths (.assets, .drawings, …).
+        if entry.path.ends_with(".md") && !entry.path.starts_with('.') {
+            let relative = &entry.path[..entry.path.len() - 3]; // strip .md
             let conflict_path = storage
-                .join("notes")
                 .join(format!("Conflict - {}.md", relative.replace('/', " - ")));
             let content = format!(
                 "---\ntags: [conflict]\n---\n\n\

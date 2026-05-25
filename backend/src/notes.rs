@@ -63,11 +63,13 @@ pub async fn list_notes(
 fn is_safe_note_name(name: &str) -> bool {
     !name.is_empty()
         && !name.contains('\\')
-        && !name.split('/').any(|seg| seg == "." || seg == "..")
+        // Disallow `.`, `..`, and hidden segments (starting with `.`) to prevent
+        // accessing `.assets/`, `.drawings/`, `.git/`, etc.
+        && !name.split('/').any(|seg| seg == ".." || seg.starts_with('.'))
 }
 
 fn note_path(storage: &std::path::Path, name: &str) -> std::path::PathBuf {
-    storage.join("notes").join(format!("{name}.md"))
+    storage.join(format!("{name}.md"))
 }
 
 pub fn read_mtime(path: &std::path::Path) -> i64 {
@@ -185,16 +187,16 @@ pub async fn rename_note(
     .ok();
 
     // Rewrite [[old_name]] wiki links in all other notes
-    let notes_dir = state.storage_path.join("notes");
+    let storage = state.storage_path.clone();
     let db_wl = state.db.clone();
     tokio::task::spawn_blocking({
-        let notes_dir = notes_dir.clone();
-        move || update_wiki_links_in_notes(&notes_dir, &name, &new_name, &db_wl)
+        let storage = storage.clone();
+        move || update_wiki_links_in_notes(&storage, &name, &new_name, &db_wl)
     })
     .await
     .ok();
 
-    let new_index = crate::backlinks::BacklinkIndex::build(&notes_dir).await;
+    let new_index = crate::backlinks::BacklinkIndex::build(&storage).await;
     *state.backlink_index.write().await = new_index;
 
     Ok(StatusCode::NO_CONTENT)
@@ -234,7 +236,7 @@ pub async fn upload_asset(
         let filename = field.file_name().unwrap_or("asset").to_string();
         let safe_name = sanitize_filename(&filename);
         let data = field.bytes().await.map_err(|_| StatusCode::BAD_REQUEST)?;
-        let dest = state.storage_path.join("assets").join(&safe_name);
+        let dest = state.storage_path.join(".assets").join(&safe_name);
         tokio::fs::write(&dest, &data)
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -251,7 +253,7 @@ pub async fn serve_asset(
     Path(filename): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let safe_name = sanitize_filename(&filename);
-    let path = state.storage_path.join("assets").join(&safe_name);
+    let path = state.storage_path.join(".assets").join(&safe_name);
     let data = tokio::fs::read(&path).await.map_err(|_| StatusCode::NOT_FOUND)?;
     let content_type = match safe_name.rsplit('.').next().unwrap_or("") {
         "png"  => "image/png",
@@ -274,7 +276,7 @@ pub struct AssetMeta {
 pub async fn list_assets(
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    let dir = state.storage_path.join("assets");
+    let dir = state.storage_path.join(".assets");
     let assets: Vec<AssetMeta> = tokio::task::spawn_blocking(move || {
         let mut result = Vec::new();
         if let Ok(entries) = std::fs::read_dir(&dir) {
@@ -298,7 +300,7 @@ pub async fn delete_asset(
     State(state): State<Arc<AppState>>,
     Path(filename): Path<String>,
 ) -> StatusCode {
-    let path = state.storage_path.join("assets").join(sanitize_filename(&filename));
+    let path = state.storage_path.join(".assets").join(sanitize_filename(&filename));
     let _ = tokio::fs::remove_file(path).await;
     StatusCode::NO_CONTENT
 }
@@ -317,6 +319,7 @@ fn update_wiki_links_in_notes(
 
     for entry in walkdir::WalkDir::new(notes_dir)
         .into_iter()
+        .filter_entry(|e| !e.file_name().to_str().map_or(false, |s| s.starts_with('.')))
         .filter_map(|e| e.ok())
     {
         let path = entry.path();

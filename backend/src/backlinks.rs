@@ -24,7 +24,11 @@ impl BacklinkIndex {
         let notes_dir = notes_dir.to_path_buf();
         tokio::task::spawn_blocking(move || {
             let mut index = BacklinkIndex::default();
-            for entry in walkdir::WalkDir::new(&notes_dir).into_iter().filter_map(|e| e.ok()) {
+            for entry in walkdir::WalkDir::new(&notes_dir)
+                .into_iter()
+                .filter_entry(|e| !e.file_name().to_str().map_or(false, |s| s.starts_with('.')))
+                .filter_map(|e| e.ok())
+            {
                 let path = entry.path();
                 if path.extension().and_then(|e| e.to_str()) != Some("md") {
                     continue;

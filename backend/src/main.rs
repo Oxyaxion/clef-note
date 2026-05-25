@@ -83,17 +83,16 @@ async fn setup_state() -> (AppState, u16) {
     // Priority: --port arg > port in toml > 3000
     let port = parse_arg("port").and_then(|v| v.parse().ok()).or(cfg.port).unwrap_or(3000);
 
-    tokio::fs::create_dir_all(storage_path.join("notes")).await.unwrap();
-    tokio::fs::create_dir_all(storage_path.join("assets")).await.unwrap();
-    tokio::fs::create_dir_all(storage_path.join("drawings")).await.unwrap();
+    tokio::fs::create_dir_all(storage_path.join(".assets")).await.unwrap();
+    tokio::fs::create_dir_all(storage_path.join(".drawings")).await.unwrap();
 
-    seed::seed_defaults(&storage_path.join("notes")).await;
+    seed::seed_defaults(&storage_path).await;
 
     let db = Arc::new(db::Db::new());
-    let backlink_index = backlinks::BacklinkIndex::build(&storage_path.join("notes")).await;
+    let backlink_index = backlinks::BacklinkIndex::build(&storage_path).await;
 
     let db_clone = db.clone();
-    let notes_dir = storage_path.join("notes");
+    let notes_dir = storage_path.clone();
     tokio::task::spawn_blocking(move || index_all_notes(&db_clone, &notes_dir))
         .await
         .ok();
@@ -203,8 +202,11 @@ async fn run_server(state: Arc<AppState>, port: u16) {
 }
 
 fn index_all_notes(db: &db::Db, notes_dir: &std::path::Path) {
-    let walker = walkdir::WalkDir::new(notes_dir);
-    for entry in walker.into_iter().filter_map(|e| e.ok()) {
+    for entry in walkdir::WalkDir::new(notes_dir)
+        .into_iter()
+        .filter_entry(|e| !e.file_name().to_str().map_or(false, |s| s.starts_with('.')))
+        .filter_map(|e| e.ok())
+    {
         let path = entry.path();
         if path.extension().and_then(|e| e.to_str()) != Some("md") {
             continue;

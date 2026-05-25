@@ -9,17 +9,17 @@ use axum::{
 use crate::AppState;
 
 fn drawing_path(state: &AppState, name: &str) -> std::path::PathBuf {
-    state.storage_path.join("drawings").join(format!("{name}.excalidraw"))
+    state.storage_path.join(".drawings").join(format!("{name}.excalidraw"))
 }
 
 fn preview_path(state: &AppState, name: &str) -> std::path::PathBuf {
-    state.storage_path.join("drawings").join(format!("{name}.svg"))
+    state.storage_path.join(".drawings").join(format!("{name}.svg"))
 }
 
 pub async fn list_drawings(
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    let dir = state.storage_path.join("drawings");
+    let dir = state.storage_path.join(".drawings");
     let names: Vec<String> = tokio::task::spawn_blocking(move || {
         let mut result = Vec::new();
         if let Ok(walker) = std::fs::read_dir(&dir) {
