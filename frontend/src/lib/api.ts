@@ -90,8 +90,8 @@ export async function listNotes(): Promise<NoteMeta[]> {
     return res.json();
 }
 
-export async function getNote(name: string): Promise<NoteContent> {
-    const res = await apiFetch(`${BASE}/notes/${encodeName(name)}`, { headers: authHeaders() });
+export async function getNote(name: string, signal?: AbortSignal): Promise<NoteContent> {
+    const res = await apiFetch(`${BASE}/notes/${encodeName(name)}`, { headers: authHeaders(), signal });
     if (!res.ok) throw new Error(`Note not found: ${name}`);
     return res.json();
 }

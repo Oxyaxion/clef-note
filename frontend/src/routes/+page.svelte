@@ -36,6 +36,7 @@
 	let selected = $state<string | null>(null);
 	let noteContent = $state('');
 	let noteFrontmatter = $state<Frontmatter>({});
+	let loadCtrl: AbortController | null = null;
 	const autoSave = createAutoSave((name, fm) => {
 		const pinned = fm.pinned === true;
 		const is_index = fm.type === 'index';
@@ -136,16 +137,19 @@
 
 	async function selectNote(name: string, pushHistory = true) {
 		autoSave.cancel();
+		loadCtrl?.abort();
+		loadCtrl = new AbortController();
 		loadError = null;
 		try {
-			const note = await getNote(name);
+			const note = await getNote(name, loadCtrl.signal);
 			noteFrontmatter = (note.frontmatter ?? {}) as Frontmatter;
 			noteContent = note.content;
 			selected = name;
 			sidebarOpen = false;
 			metaPageOpen = false;
 			if (pushHistory) nav.push(name);
-		} catch {
+		} catch (e) {
+			if (e instanceof DOMException && e.name === 'AbortError') return;
 			loadError = `Could not load "${name}". The note may have been deleted or the server is unreachable.`;
 		}
 	}
