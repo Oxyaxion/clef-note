@@ -23,3 +23,4 @@ toml = "1"
 argon2 = { version = "0.5", features = ["password-hash"] }
 rand_core = { version = "0.6", features = ["getrandom"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+git2 = { version = "0.19", default-features = false, features = ["https"] }

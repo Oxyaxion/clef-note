@@ -7,6 +7,7 @@
 	import SettingsGeneral from './SettingsGeneral.svelte';
 	import SettingsAppearance from './SettingsAppearance.svelte';
 	import SettingsSecurity from './SettingsSecurity.svelte';
+	import SettingsSync from './SettingsSync.svelte';
 
 	interface Props {
 		currentTheme: ThemeId;
@@ -63,6 +64,7 @@
 			<SettingsGeneral bind:settings {onChange} />
 			<SettingsAppearance bind:settings {currentTheme} {onSetTheme} {onChange} {onReset} />
 			<SettingsSecurity />
+			<SettingsSync />
 		</div>
 
 		<div class="modal-footer">

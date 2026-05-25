@@ -12,10 +12,14 @@ mod query;
 mod seed;
 mod session;
 mod settings;
+mod sync;
 
 use std::sync::Arc;
 
-use axum::{Router, middleware, routing::{delete, get, post}};
+use axum::{
+    Json, Router, extract::State, http::StatusCode, middleware,
+    routing::{delete, get, post},
+};
 use tower_http::cors::{Any, CorsLayer};
 
 pub struct AppState {
@@ -26,6 +30,8 @@ pub struct AppState {
     pub sessions: session::SessionStore,
     pub api_key: Option<String>,
     pub login_guard: auth::LoginGuard,
+    pub sync_config: Option<config::SyncConfig>,
+    pub sync_status: sync::SharedSyncStatus,
 }
 
 #[tokio::main]
@@ -43,7 +49,9 @@ async fn main() {
 
     tracing_subscriber::fmt::init();
     let (state, port) = setup_state().await;
-    run_server(Arc::new(state), port).await;
+    let state = Arc::new(state);
+    start_sync_task(&state);
+    run_server(state, port).await;
 }
 
 fn parse_arg(name: &str) -> Option<String> {
@@ -90,6 +98,8 @@ async fn setup_state() -> (AppState, u16) {
         .await
         .ok();
 
+    let sync_status = sync::new_status(cfg.sync.is_some());
+
     let state = AppState {
         storage_path,
         backlink_index: tokio::sync::RwLock::new(backlink_index),
@@ -98,9 +108,54 @@ async fn setup_state() -> (AppState, u16) {
         sessions: session::SessionStore::new(),
         api_key: cfg.api_key,
         login_guard: auth::LoginGuard::new(),
+        sync_config: cfg.sync,
+        sync_status,
     };
     (state, port)
 }
+
+/// Spawn the periodic sync background task if sync is configured.
+fn start_sync_task(state: &Arc<AppState>) {
+    let Some(cfg) = state.sync_config.clone() else { return };
+    let storage = state.storage_path.clone();
+    let status = state.sync_status.clone();
+
+    tokio::spawn(async move {
+        // Initial sync on startup.
+        sync::run_sync(&cfg, &storage, &status).await;
+
+        let interval_secs = cfg.interval_minutes.unwrap_or(0) * 60;
+        if interval_secs > 0 {
+            let mut ticker =
+                tokio::time::interval(tokio::time::Duration::from_secs(interval_secs));
+            ticker.tick().await; // first tick fires immediately — skip it
+            loop {
+                ticker.tick().await;
+                sync::run_sync(&cfg, &storage, &status).await;
+            }
+        }
+    });
+}
+
+// ── Sync API handlers ─────────────────────────────────────────────────────────
+
+async fn get_sync_status(State(state): State<Arc<AppState>>) -> Json<sync::SyncStatus> {
+    Json(state.sync_status.lock().unwrap().clone())
+}
+
+async fn trigger_sync(State(state): State<Arc<AppState>>) -> StatusCode {
+    let Some(cfg) = state.sync_config.clone() else {
+        return StatusCode::SERVICE_UNAVAILABLE;
+    };
+    let storage = state.storage_path.clone();
+    let status = state.sync_status.clone();
+    tokio::spawn(async move {
+        sync::run_sync(&cfg, &storage, &status).await;
+    });
+    StatusCode::ACCEPTED
+}
+
+// ── Server ────────────────────────────────────────────────────────────────────
 
 async fn run_server(state: Arc<AppState>, port: u16) {
     let cors = CorsLayer::new()
@@ -127,6 +182,8 @@ async fn run_server(state: Arc<AppState>, port: u16) {
         .route("/api/key", get(key::get_keys))
         .route("/api/settings", get(settings::get_settings).put(settings::put_settings))
         .route("/api/openapi.json", get(openapi::get_spec))
+        .route("/api/sync/status", get(get_sync_status))
+        .route("/api/sync", post(trigger_sync))
         .route("/auth/logout", post(auth::logout))
         .layer(middleware::from_fn_with_state(state.clone(), auth::middleware));
 

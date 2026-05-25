@@ -308,6 +308,27 @@ export async function putSettings(s: AppSettings): Promise<void> {
     });
 }
 
+// ── Git sync ──────────────────────────────────────────────────────────────────
+
+export interface SyncStatus {
+    configured: boolean;
+    last_sync_at: string | null;
+    last_error: string | null;
+}
+
+export async function getSyncStatus(): Promise<SyncStatus> {
+    const res = await apiFetch(`${BASE}/api/sync/status`, { headers: authHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch sync status');
+    return res.json();
+}
+
+export async function triggerSync(): Promise<void> {
+    await apiFetch(`${BASE}/api/sync`, {
+        method: 'POST',
+        headers: authHeaders(),
+    });
+}
+
 // ── Frontmatter helpers ───────────────────────────────────────────────────────
 
 export { serializeFrontmatter } from './frontmatter';

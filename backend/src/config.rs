@@ -1,3 +1,4 @@
+use std::fmt;
 use serde::Deserialize;
 
 const TEMPLATE: &str = r#"# Clef Note — configuration
@@ -17,7 +18,39 @@ password = ""
 # API key — optional. For programmatic access (CLI, REST, OpenAI tools…).
 # Generate with: openssl rand -hex 32
 # api_key = ""
+
+# Git sync — optional. Synchronise storage/ with a remote git repository.
+# Supports GitHub, Gitea, Forgejo, GitLab (HTTPS + token).
+# [sync]
+# remote = "https://github.com/you/notes.git"
+# branch = "main"
+# token = "ghp_xxxx"          # GitHub PAT · Gitea/Forgejo token
+# interval_minutes = 30       # 0 = manual only (use the Settings UI button)
+# author_name = "clef-note"   # optional — commit author name
+# author_email = "sync@local" # optional — commit author email
 "#;
+
+#[derive(Deserialize, Clone)]
+pub struct SyncConfig {
+    pub remote: String,
+    pub branch: String,
+    pub token: String,
+    pub interval_minutes: Option<u64>,
+    pub author_name: Option<String>,
+    pub author_email: Option<String>,
+}
+
+// Never print the token in logs.
+impl fmt::Debug for SyncConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SyncConfig")
+            .field("remote", &self.remote)
+            .field("branch", &self.branch)
+            .field("token", &"[REDACTED]")
+            .field("interval_minutes", &self.interval_minutes)
+            .finish()
+    }
+}
 
 #[derive(Deserialize)]
 pub struct Config {
@@ -25,6 +58,7 @@ pub struct Config {
     pub storage: Option<String>,
     pub port: Option<u16>,
     pub api_key: Option<String>,
+    pub sync: Option<SyncConfig>,
 }
 
 pub fn resolve_path(storage_path: &std::path::Path) -> std::path::PathBuf {
@@ -74,6 +108,13 @@ pub fn load(storage_path: &std::path::Path) -> Config {
         eprintln!("error: password in clef-note.toml must be an Argon2 hash");
         eprintln!("       Generate with: ./clef-note --hash-password \"yourpassword\"");
         std::process::exit(1);
+    }
+
+    if let Some(sync) = &cfg.sync {
+        if sync.remote.trim().is_empty() || sync.token.trim().is_empty() || sync.branch.trim().is_empty() {
+            eprintln!("error: [sync] requires remote, branch, and token to be set");
+            std::process::exit(1);
+        }
     }
 
     cfg
