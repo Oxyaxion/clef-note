@@ -17,3 +17,18 @@ password = "$argon2id$v=19$..."
 # Optional — API key for programmatic access (CLI scripts/an, REST, OpenAPI).
 # Generate with: openssl rand -hex 32
 # api_key = ""
+
+# Optional — git sync. Synchronise storage/ with a remote repository.
+# Supports GitHub, Gitea, Forgejo, GitLab (HTTPS + personal access token).
+#
+# GitHub token: Settings → Developer settings → Personal access tokens
+#               → Fine-grained → Contents: Read and write
+# Gitea/Forgejo: User Settings → Applications → Generate token
+#
+# [sync]
+# remote           = "https://github.com/you/notes.git"
+# branch           = "main"
+# token            = "ghp_xxxx"
+# interval_minutes = 30        # 0 = manual only (Settings → Git Sync → Sync now)
+# author_name      = "clef-note"    # optional — git commit author name
+# author_email     = "sync@local"   # optional — git commit author email
