@@ -50,7 +50,8 @@
 	const commandQuery = $derived(isCommandMode ? query.slice(1).trimStart() : '');
 	const dslQuery = $derived(isQueryMode ? query.slice(1).trimStart() : '');
 
-	const commands = $derived<Command[]>([
+	// Stable commands — rebuilt only when themes or core actions change (not on note switch)
+	const baseCommands = $derived<Command[]>([
 		{
 			id: 'settings',
 			label: 'Settings',
@@ -69,100 +70,98 @@
 			icon: '＋',
 			action: () => { onClose(); onNewNote(); },
 		},
-		{
-			id: 'rename',
-			label: 'Rename',
-			hint: selected ?? undefined,
-			icon: '✎',
-			action: () => { onClose(); onRename(); },
-		},
-		{
-			id: 'delete',
-			label: 'Delete',
-			hint: selected ?? undefined,
-			icon: '✕',
-			action: () => { onClose(); onDelete(); },
-		},
-		// Themes — always available
+		// Themes — depend on currentTheme for the active indicator
 		...THEMES.map((t) => ({
 			id: `theme-${t.id}`,
 			label: `Theme: ${t.label}`,
 			icon: currentTheme === t.id ? '●' : '○',
 			action: () => { onSetTheme(t.id); onClose(); },
 		})),
-
-		// Media — only shown when a note is open
-		...(selected ? [
-			{
-				id: 'upload-image',
-				label: 'Upload image',
-				icon: '↑',
-				action: () => {
-					onClose();
-					const input = document.createElement('input');
-					input.type = 'file';
-					input.accept = 'image/*';
-					input.onchange = async () => {
-						const file = input.files?.[0];
-						if (!file) return;
-						try {
-							const url = await uploadAsset(file);
-							emit(document, 'insert-image', url);
-						} catch (err) {
-							console.error('Image upload failed', err);
-						}
-					};
-					input.click();
-				},
-			},
-		] : []),
-
-		// Export / share — only shown when a note is open
-		...(selected ? [
-			{
-				id: 'copy-md',
-				label: 'Copy Markdown',
-				icon: '⎘',
-				action: async () => { await copyMarkdown(noteMarkdown); onClose(); },
-			},
-			{
-				id: 'copy-html',
-				label: 'Copy HTML',
-				icon: '⎘',
-				action: async () => { await copyHtml(noteMarkdown); onClose(); },
-			},
-			{
-				id: 'download-md',
-				label: 'Download .md',
-				icon: '↓',
-				action: () => { downloadMd(selected, noteMarkdown); onClose(); },
-			},
-			{
-				id: 'copy-md-clean',
-				label: 'Copy Markdown (no queries)',
-				icon: '⎘',
-				action: async () => { await copyMarkdownClean(noteMarkdown); onClose(); },
-			},
-			{
-				id: 'download-md-clean',
-				label: 'Download .md (no queries)',
-				icon: '↓',
-				action: () => { downloadMdClean(selected, noteMarkdown); onClose(); },
-			},
-			{
-				id: 'print',
-				label: 'Print / PDF',
-				icon: '⎙',
-				action: () => { onClose(); printNote(); },
-			},
-			...(canShare ? [{
-				id: 'share',
-				label: 'Share',
-				icon: '↗',
-				action: async () => { await shareNote(selected, noteMarkdown); onClose(); },
-			}] : []),
-		] : []),
 	]);
+
+	// Note-context commands — rebuilt only when selected note changes
+	const noteCommands = $derived<Command[]>(selected ? [
+		{
+			id: 'rename',
+			label: 'Rename',
+			hint: selected,
+			icon: '✎',
+			action: () => { onClose(); onRename(); },
+		},
+		{
+			id: 'delete',
+			label: 'Delete',
+			hint: selected,
+			icon: '✕',
+			action: () => { onClose(); onDelete(); },
+		},
+		{
+			id: 'upload-image',
+			label: 'Upload image',
+			icon: '↑',
+			action: () => {
+				onClose();
+				const input = document.createElement('input');
+				input.type = 'file';
+				input.accept = 'image/*';
+				input.onchange = async () => {
+					const file = input.files?.[0];
+					if (!file) return;
+					try {
+						const url = await uploadAsset(file);
+						emit(document, 'insert-image', url);
+					} catch (err) {
+						console.error('Image upload failed', err);
+					}
+				};
+				input.click();
+			},
+		},
+		{
+			id: 'copy-md',
+			label: 'Copy Markdown',
+			icon: '⎘',
+			action: async () => { await copyMarkdown(noteMarkdown); onClose(); },
+		},
+		{
+			id: 'copy-html',
+			label: 'Copy HTML',
+			icon: '⎘',
+			action: async () => { await copyHtml(noteMarkdown); onClose(); },
+		},
+		{
+			id: 'download-md',
+			label: 'Download .md',
+			icon: '↓',
+			action: () => { downloadMd(selected, noteMarkdown); onClose(); },
+		},
+		{
+			id: 'copy-md-clean',
+			label: 'Copy Markdown (no queries)',
+			icon: '⎘',
+			action: async () => { await copyMarkdownClean(noteMarkdown); onClose(); },
+		},
+		{
+			id: 'download-md-clean',
+			label: 'Download .md (no queries)',
+			icon: '↓',
+			action: () => { downloadMdClean(selected, noteMarkdown); onClose(); },
+		},
+		{
+			id: 'print',
+			label: 'Print / PDF',
+			icon: '⎙',
+			action: () => { onClose(); printNote(); },
+		},
+		...(canShare ? [{
+			id: 'share',
+			label: 'Share',
+			icon: '↗',
+			action: async () => { await shareNote(selected, noteMarkdown); onClose(); },
+		}] : []),
+	] : []);
+
+	const commands = $derived<Command[]>([...baseCommands, ...noteCommands]);
 
 	const filteredCommands = $derived(
 		commandQuery.trim() === ''
