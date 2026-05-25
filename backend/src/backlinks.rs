@@ -93,16 +93,23 @@ pub async fn get_backlinks(
     AxumPath(name): AxumPath<String>,
 ) -> Result<Json<BacklinksResponse>, StatusCode> {
     let index = state.backlink_index.read().await;
-    let mut backlinks = index.get(&name);
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut backlinks: Vec<String> = Vec::new();
+
+    let mut add = |items: Vec<String>| {
+        for bl in items {
+            if seen.insert(bl.clone()) {
+                backlinks.push(bl);
+            }
+        }
+    };
+
+    add(index.get(&name));
 
     // Also look up by basename: [[Note Name]] links to Dev/Note Name
     let basename = name.split('/').next_back().unwrap_or(&name);
     if basename != name {
-        for bl in index.get(basename) {
-            if !backlinks.contains(&bl) {
-                backlinks.push(bl);
-            }
-        }
+        add(index.get(basename));
     }
 
     // Also gather backlinks via aliases
@@ -112,11 +119,7 @@ pub async fn get_backlinks(
         .await
         .unwrap_or_default();
     for alias in aliases {
-        for bl in index.get(&alias) {
-            if !backlinks.contains(&bl) {
-                backlinks.push(bl);
-            }
-        }
+        add(index.get(&alias));
     }
 
     Ok(Json(BacklinksResponse {
