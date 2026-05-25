@@ -172,9 +172,9 @@
 			/>
 		{/if}
 		<div class="lp-actions">
-			<button class="lp-apply" onmousedown={(e) => { e.preventDefault(); applyLink(); }}>Ajouter</button>
+			<button class="lp-apply" onmousedown={(e) => { e.preventDefault(); applyLink(); }}>Apply</button>
 			{#if hasExisting}
-				<button class="lp-remove" onmousedown={(e) => { e.preventDefault(); removeLink(); }}>Supprimer</button>
+				<button class="lp-remove" onmousedown={(e) => { e.preventDefault(); removeLink(); }}>Remove</button>
 			{/if}
 		</div>
 	</div>
