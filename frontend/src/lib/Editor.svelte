@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, untrack } from 'svelte';
 	import { Editor, InputRule } from '@tiptap/core';
 	import { EditorState } from '@tiptap/pm/state';
 	import StarterKit from '@tiptap/starter-kit';
@@ -31,13 +31,15 @@
 
 	interface Props {
 		noteContent: string;
+		/** Changes only on note switch — used as the trigger to reload content, not on every keystroke. */
+		noteKey: string | null;
 		noteNames: string[];
 		isIndex?: boolean;
 		isLocked?: boolean;
 		onEdit: (markdown: string) => void;
 	}
 
-	let { noteContent, noteNames, isIndex = false, isLocked = false, onEdit }: Props = $props();
+	let { noteContent, noteKey, noteNames, isIndex = false, isLocked = false, onEdit }: Props = $props();
 
 	let element: HTMLDivElement;
 	let editor: Editor | null = null;  // must NOT be $state — TipTap mutates it internally
@@ -182,20 +184,20 @@
 		editorReady = true;
 	});
 
+	// Runs only when noteKey changes (note switch), not on every keystroke.
+	// noteContent is read untracked so typing never re-triggers this effect.
 	$effect(() => {
-		const content = noteContent; // read first to track the prop before any early return
+		noteKey; // reactive dependency — changes only on note switch
 		if (!editor) return;
-		const current = getMarkdown(editor);
-		if (content !== current) {
-			isUpdatingFromProp = true;
-			editor.commands.setContent(content, { emitUpdate: false });
-			// Replace state entirely so undo history from the previous note is cleared.
-			// Without this, Ctrl+Z after switching notes could revert to another note's content.
-			const { schema, plugins, doc } = editor.state;
-			editor.view.updateState(EditorState.create({ schema, plugins, doc }));
-			element.scrollTop = 0;
-			isUpdatingFromProp = false;
-		}
+		const content = untrack(() => noteContent);
+		isUpdatingFromProp = true;
+		editor.commands.setContent(content, { emitUpdate: false });
+		// Replace state entirely so undo history from the previous note is cleared.
+		// Without this, Ctrl+Z after switching notes could revert to another note's content.
+		const { schema, plugins, doc } = editor.state;
+		editor.view.updateState(EditorState.create({ schema, plugins, doc }));
+		element.scrollTop = 0;
+		isUpdatingFromProp = false;
 	});
 
 	$effect(() => {

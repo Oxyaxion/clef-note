@@ -396,7 +396,7 @@
 						onChange={onFrontmatterChange}
 					/>
 				{/key}
-				<Editor {noteContent} {noteNames} {onEdit} {isIndex} {isLocked} />
+				<Editor {noteContent} noteKey={selected} {noteNames} {onEdit} {isIndex} {isLocked} />
 			</div>
 			{#if !focusMode}
 				<Backlinks note={selected} onNavigate={selectNote} />
