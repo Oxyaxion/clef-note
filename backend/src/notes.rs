@@ -9,15 +9,7 @@ use axum::{
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use crate::AppState;
-
-#[derive(Serialize)]
-pub struct NoteMeta {
-    pub name: String,
-    pub pinned: bool,
-    pub is_template: bool,
-    pub is_index: bool,
-}
+use crate::{db::NoteMeta, AppState};
 
 #[derive(Serialize)]
 pub struct NoteContent {
@@ -57,14 +49,9 @@ pub async fn list_notes(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<NoteMeta>>, StatusCode> {
     let db = state.db.clone();
-    let mut notes: Vec<NoteMeta> = tokio::task::spawn_blocking(move || {
-        db.list_all_meta()
-            .into_iter()
-            .map(|(name, pinned, is_template, is_index)| NoteMeta { name, pinned, is_template, is_index })
-            .collect()
-    })
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let mut notes: Vec<NoteMeta> = tokio::task::spawn_blocking(move || db.list_all_meta())
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // Stable alphabetical sort first, then stable pinned-first
     notes.sort_by(|a, b| a.name.cmp(&b.name));

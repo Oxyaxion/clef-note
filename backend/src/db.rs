@@ -8,6 +8,14 @@ use crate::frontmatter::ParsedNote;
 // ── Public types ──────────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Clone)]
+pub struct NoteMeta {
+    pub name: String,
+    pub pinned: bool,
+    pub is_template: bool,
+    pub is_index: bool,
+}
+
+#[derive(Debug, Serialize, Clone)]
 pub struct NoteRow {
     pub name: String,
     pub title: Option<String>,
@@ -155,12 +163,12 @@ impl Db {
             .unwrap_or_default()
     }
 
-    pub fn list_all_meta(&self) -> Vec<(String, bool, bool, bool)> {
+    pub fn list_all_meta(&self) -> Vec<NoteMeta> {
         let index = self.0.read().unwrap();
         index.values().map(|n| {
             let is_template = n.row.note_type.as_deref() == Some("template");
             let is_index    = n.row.note_type.as_deref() == Some("index");
-            (n.row.name.clone(), n.row.pinned, is_template, is_index)
+            NoteMeta { name: n.row.name.clone(), pinned: n.row.pinned, is_template, is_index }
         }).collect()
     }
 
@@ -483,37 +491,43 @@ fn parse_query(q: &str) -> ParsedQuery {
     let mut oldest: Option<usize> = None;
     let mut order_by: Option<OrderBy> = None;
 
-    // order by parsing state: 0=idle, 1=expect BY, 2=expect field, 3=expect asc/desc
-    let mut ob_state: u8 = 0;
+    #[derive(PartialEq)]
+    enum ObState { Idle, ExpectBy, ExpectField, ExpectDir }
+    let mut ob_state = ObState::Idle;
     let mut ob_field = String::new();
 
     for token in q.split_whitespace() {
         let upper = token.to_ascii_uppercase();
 
-        // order by state machine
         match ob_state {
-            1 => { if upper == "BY" { ob_state = 2; } else { ob_state = 0; } continue; }
-            2 => { ob_field = token.to_lowercase(); ob_state = 3; continue; }
-            3 => {
+            ObState::ExpectBy => {
+                ob_state = if upper == "BY" { ObState::ExpectField } else { ObState::Idle };
+                continue;
+            }
+            ObState::ExpectField => {
+                ob_field = token.to_lowercase();
+                ob_state = ObState::ExpectDir;
+                continue;
+            }
+            ObState::ExpectDir => {
                 let desc = upper == "DESC";
                 if upper == "ASC" || desc {
                     order_by = Some(OrderBy { field: ob_field.clone(), desc });
-                    ob_state = 0;
+                    ob_state = ObState::Idle;
                     continue;
                 }
                 // No direction token — commit with default asc and fall through
                 order_by = Some(OrderBy { field: ob_field.clone(), desc: false });
-                ob_state = 0;
-                // fall through to normal token handling below
+                ob_state = ObState::Idle;
             }
-            _ => {}
+            ObState::Idle => {}
         }
 
         match upper.as_str() {
             "OR"    => { pending_or  = true; continue; }
             "AND"   => {                     continue; }
             "NOT"   => { pending_not = true; continue; }
-            "ORDER" => { ob_state = 1;       continue; }
+            "ORDER" => { ob_state = ObState::ExpectBy; continue; }
             _ => {}
         }
 
@@ -523,10 +537,6 @@ fn parse_query(q: &str) -> ParsedQuery {
         }
 
         let not = std::mem::replace(&mut pending_not, false);
-
-        // NOT predicates are global exclusions — applied after OR-group evaluation
-        // so `A OR B AND NOT C` means `(A OR B) AND NOT C`, not `A OR (B AND NOT C)`.
-        let dest_is_global = not;
 
         let pred = if let Some(v) = token.strip_prefix('#') {
             Pred::Tag(v.to_lowercase(), not)
@@ -580,7 +590,9 @@ fn parse_query(q: &str) -> ParsedQuery {
             Pred::Text(token.to_lowercase(), not)
         };
 
-        if dest_is_global {
+        // NOT predicates are global exclusions — applied after OR-group evaluation
+        // so `A OR B AND NOT C` means `(A OR B) AND NOT C`, not `A OR (B AND NOT C)`.
+        if not {
             global_not.push(pred);
         } else {
             or_groups.last_mut().unwrap().push(pred);
@@ -588,7 +600,7 @@ fn parse_query(q: &str) -> ParsedQuery {
     }
 
     // Flush a pending order field with no direction token
-    if ob_state == 3 && !ob_field.is_empty() {
+    if ob_state == ObState::ExpectDir && !ob_field.is_empty() {
         order_by = Some(OrderBy { field: ob_field, desc: false });
     }
 
