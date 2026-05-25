@@ -1,11 +1,5 @@
 CLAUDE.md
-storage/index.db
-storage/.key
-storage/.mcp-key
-storage/settings.json
-storage/notes/
-storage/assets/
-storage/drawings/
+storage/
 aura_notes.toml
 frontend/.env.local
 frontend/build/
