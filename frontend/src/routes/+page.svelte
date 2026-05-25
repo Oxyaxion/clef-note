@@ -1,19 +1,17 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import Sidebar from '$lib/Sidebar.svelte';
-	import Editor from '$lib/Editor.svelte';
-	import Backlinks from '$lib/Backlinks.svelte';
+	import NoteEditorPane from '$lib/NoteEditorPane.svelte';
 	import CommandPalette from '$lib/CommandPalette.svelte';
-	import FrontmatterEditor from '$lib/FrontmatterEditor.svelte';
 	import Settings from '$lib/Settings.svelte';
 	import MetaPage from '$lib/MetaPage.svelte';
 	import LoginPage from '$lib/LoginPage.svelte';
-	import TableOfContents, { type Heading } from '$lib/TableOfContents.svelte';
+	import ConfirmDialog from '$lib/ConfirmDialog.svelte';
+	import MobileTopBar from '$lib/MobileTopBar.svelte';
 	import {
 		listNotes,
 		getNote,
 		saveNote,
-		renameNote,
 		deleteNote,
 		getSettings,
 		serializeFrontmatter,
@@ -28,9 +26,6 @@
 	import { emit, on } from '$lib/events';
 	import { createNavigation } from '$lib/navigation.svelte';
 	import { createAutoSave } from '$lib/autoSave.svelte';
-	import TitleBar from '$lib/TitleBar.svelte';
-	import MobileTopBar from '$lib/MobileTopBar.svelte';
-	import ConfirmDialog from '$lib/ConfirmDialog.svelte';
 
 	let notes = $state<NoteMeta[]>([]);
 	let selected = $state<string | null>(null);
@@ -48,12 +43,11 @@
 		);
 	});
 	let paletteOpen = $state(false);
-	let sidebarOpen = $state(false);   // mobile drawer state
-	let renaming = $state(false);
-	let renameValue = $state('');
-	let renameError = $state('');
+	let sidebarOpen = $state(false);
+	let renaming = $state(false);   // bound to NoteEditorPane
+	let focusMode = $state(false);  // bound to NoteEditorPane
 	let isMobile = $state(false);
-	let creatingFromPalette = $state(false);  // true = open new-note input in sidebar
+	let creatingFromPalette = $state(false);
 	let currentTheme = $state<ThemeId>('default');
 	let vaultName = $state('Notes');
 	let loggedIn = $state(session.exists());
@@ -61,24 +55,11 @@
 	let metaPageOpen = $state(false);
 	let currentSettings = $state<AppSettings>({ ...DEFAULT });
 	const nav = createNavigation();
-	let focusMode = $state(false);
 	let confirmDialog = $state<{ message: string; onConfirm: () => void } | null>(null);
 	let loadError = $state<string | null>(null);
 
-
 	const frontmatterMd = $derived(serializeFrontmatter(noteFrontmatter));
 	const noteMarkdown = $derived(frontmatterMd + noteContent);
-
-	const headings = $derived<Heading[]>(
-		Array.from(noteContent.matchAll(/^(#{1,6})\s+(.+?)(?:\s+#+\s*)?$/gm)).map((m) => ({
-			level: m[1].length,
-			text: m[2].trim(),
-		}))
-	);
-
-	const showToc = $derived(
-		headings.length >= 2 && noteFrontmatter.toc !== false
-	);
 
 	// Stable reference: only changes when note names actually change, not on every metadata save.
 	let _prevNoteNames: string[] = [];
@@ -90,12 +71,6 @@
 		_prevNoteNames = names;
 		return names;
 	});
-	const isIndex = $derived(noteFrontmatter.type === 'index');
-	const isLocked = $derived(noteFrontmatter.locked === true);
-
-	function disableToc() {
-		onFrontmatterChange({ ...noteFrontmatter, toc: false });
-	}
 
 	// One-time setup: auth expiry + media query — neither depends on reactive state.
 	onMount(() => {
@@ -131,7 +106,6 @@
 	});
 
 	// Re-run when loggedIn changes: subscribe to wiki-link navigation events.
-	// The handler reads `notes` lazily at event-fire time, so it always sees the current list.
 	$effect(() => {
 		if (!loggedIn) return;
 		return on(document, 'wiki-navigate', (target) => {
@@ -146,6 +120,7 @@
 
 	async function selectNote(name: string, pushHistory = true) {
 		autoSave.cancel();
+		renaming = false;
 		loadCtrl?.abort();
 		loadCtrl = new AbortController();
 		loadError = null;
@@ -212,34 +187,10 @@
 		autoSave.schedule(selected, fm, noteContent);
 	}
 
-	function startRename() {
-		if (!selected) return;
-		renameValue = selected;
-		renameError = '';
-		renaming = true;
-	}
-
-	async function confirmRename() {
-		if (!selected || !renaming) return;
-		renaming = false;
-		const newName = renameValue.trim();
-		if (!newName || newName === selected) return;
+	function handleRenamed(oldName: string, newName: string) {
 		autoSave.cancel();
-		const oldName = selected;
-		try {
-			await renameNote(oldName, newName);
-			notes = notes.map(n => n.name === oldName ? { ...n, name: newName } : n);
-			selected = newName;
-			emit(document, 'notes:changed');
-		} catch (e: unknown) {
-			renameError = e instanceof Error ? e.message : 'Rename failed';
-			renaming = true;
-		}
-	}
-
-	function cancelRename() {
-		renaming = false;
-		renameError = '';
+		notes = notes.map(n => n.name === oldName ? { ...n, name: newName } : n);
+		selected = newName;
 	}
 
 	function handleDelete() {
@@ -259,16 +210,6 @@
 		};
 	}
 
-	function toggleLock() {
-		const fm = { ...noteFrontmatter };
-		if (isLocked) {
-			delete fm.locked;
-		} else {
-			fm.locked = true;
-		}
-		onFrontmatterChange(fm);
-	}
-
 	function openPalette() {
 		paletteOpen = true;
 	}
@@ -277,14 +218,6 @@
 		vaultName = s.vaultName ?? 'Notes';
 		currentSettings = s;
 		setDateFormat(s.dateFormat ?? 'long-en');
-	}
-
-	function openSettings() {
-		settingsOpen = true;
-	}
-
-	function openMetaPage() {
-		metaPageOpen = true;
 	}
 
 	function onGlobalKeydown(e: KeyboardEvent) {
@@ -340,21 +273,26 @@
 			creatingFromPalette = true;
 			sidebarOpen = true;
 		}}
-		onRename={startRename}
+		onRename={() => (renaming = true)}
 		onDelete={handleDelete}
 		onSetTheme={(id) => { currentTheme = id; applyTheme(id); }}
-		onSettings={openSettings}
-		onMediaLibrary={openMetaPage}
+		onSettings={() => (settingsOpen = true)}
+		onMediaLibrary={() => (metaPageOpen = true)}
 	/>
 {/if}
 
 {#if isMobile}
 	<MobileTopBar
 		title={selected ?? 'Notes'}
-		{isLocked}
+		isLocked={noteFrontmatter.locked === true}
 		hasNote={!!selected}
 		onMenu={() => (sidebarOpen = !sidebarOpen)}
-		onToggleLock={toggleLock}
+		onToggleLock={() => {
+			if (!selected) return;
+			const fm = { ...noteFrontmatter };
+			if (fm.locked) { delete fm.locked; } else { fm.locked = true; }
+			onFrontmatterChange(fm);
+		}}
 		onSearch={openPalette}
 	/>
 {/if}
@@ -373,43 +311,26 @@
 		onCreateStarted={() => (creatingFromPalette = false)}
 	/>
 
-	<main class="main" class:focus-mode={focusMode}>
+	<main class="main">
 		{#if metaPageOpen}
 			<MetaPage onClose={() => (metaPageOpen = false)} />
 		{:else if selected}
-			<TitleBar
+			<NoteEditorPane
 				{selected}
+				{noteContent}
+				{noteFrontmatter}
+				{noteNames}
 				saving={autoSave.saving}
 				saveFailed={autoSave.saveFailed}
-				{isLocked}
-				{focusMode}
 				{isMobile}
 				bind:renaming
-				bind:renameValue
-				renameError={renameError}
-				onStartRename={startRename}
-				onConfirmRename={confirmRename}
-				onCancelRename={cancelRename}
-				onToggleLock={toggleLock}
-				onToggleFocus={() => (focusMode = !focusMode)}
+				bind:focusMode
+				{onEdit}
+				{onFrontmatterChange}
+				onNavigate={selectNote}
+				onRenamed={handleRenamed}
 				onOpenPalette={openPalette}
 			/>
-
-			{#if showToc && !focusMode}
-				<TableOfContents {headings} onDisable={disableToc} />
-			{/if}
-			<div class="editor-area" class:focus-mode={focusMode}>
-				{#key selected}
-					<FrontmatterEditor
-						frontmatter={noteFrontmatter}
-						onChange={onFrontmatterChange}
-					/>
-				{/key}
-				<Editor {noteContent} noteKey={selected} {noteNames} {onEdit} {isIndex} {isLocked} />
-			</div>
-			{#if !focusMode}
-				<Backlinks note={selected} onNavigate={selectNote} />
-			{/if}
 		{:else if loadError}
 			<div class="empty-state error-state">
 				<p class="error-msg">{loadError}</p>
@@ -446,33 +367,7 @@
 		min-width: 0;
 	}
 
-
-	/* ── Focus mode ─────────────────────────────────────────────── */
-	.editor-area {
-		display: flex;
-		flex-direction: column;
-		flex: 1;
-		min-height: 0; /* allows flex child to shrink and scroll correctly */
-		min-width: 0;
-	}
-
-	.editor-area.focus-mode {
-		max-width: clamp(760px, 75vw, 1200px);
-		width: 100%;
-		margin: 0 auto;
-		overflow: hidden;
-	}
-
-	.editor-area.focus-mode :global(.editor-wrap) {
-		scrollbar-width: none;
-		-ms-overflow-style: none;
-	}
-
-	.editor-area.focus-mode :global(.editor-wrap::-webkit-scrollbar) {
-		display: none;
-	}
-
-	/* ── Empty state ─────────────────────────────────────────── */
+	/* ── Empty state ─────────────────────────────────────── */
 	.empty-state {
 		flex: 1;
 		display: flex;
