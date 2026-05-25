@@ -210,32 +210,32 @@ impl Db {
 
     pub fn query_notes(&self, q: &str) -> Vec<NoteRow> {
         let index = self.0.read().unwrap();
-        let (or_groups, global_not, recent, oldest, order_by) = parse_query(q);
+        let pq = parse_query(q);
 
         let mut results: Vec<&NoteRow> = index
             .values()
             .map(|n| &n.row)
             .filter(|note| {
-                let or_match = or_groups.is_empty()
-                    || or_groups.iter().any(|group| group.iter().all(|p| p.eval(note)));
-                let not_match = global_not.iter().all(|p| p.eval(note));
+                let or_match = pq.or_groups.is_empty()
+                    || pq.or_groups.iter().any(|group| group.iter().all(|p| p.eval(note)));
+                let not_match = pq.global_not.iter().all(|p| p.eval(note));
                 or_match && not_match
             })
             .collect();
 
         // recent:N / oldest:N limit by modification time before any order by
-        if let Some(n) = recent {
+        if let Some(n) = pq.recent {
             results.sort_by_key(|r| std::cmp::Reverse(r.modified_at));
             results.truncate(n);
-        } else if let Some(n) = oldest {
+        } else if let Some(n) = pq.oldest {
             results.sort_by_key(|r| r.modified_at);
             results.truncate(n);
         }
 
         // order by overrides the final sort (after potential recent/oldest truncation)
-        if let Some(ref ob) = order_by {
+        if let Some(ref ob) = pq.order_by {
             results.sort_by(|a, b| compare_by_field(a, b, &ob.field, ob.desc));
-        } else if recent.is_none() && oldest.is_none() {
+        } else if pq.recent.is_none() && pq.oldest.is_none() {
             results.sort_by(|a, b| a.name.cmp(&b.name));
         }
 
@@ -462,11 +462,19 @@ fn cmp_priority(a: Option<&str>, b: Option<&str>, desc: bool) -> std::cmp::Order
 
 // ── Query parser ──────────────────────────────────────────────────────────────
 
+struct ParsedQuery {
+    or_groups: Vec<Vec<Pred>>,
+    global_not: Vec<Pred>,
+    recent: Option<usize>,
+    oldest: Option<usize>,
+    order_by: Option<OrderBy>,
+}
+
 /// Parse a DSL query string into OR-groups of AND-predicates.
 ///
 /// Precedence: AND binds tighter than OR.
 ///   `A OR B AND C`  →  `[[A], [B, C]]`  →  A OR (B AND C)
-fn parse_query(q: &str) -> (Vec<Vec<Pred>>, Vec<Pred>, Option<usize>, Option<usize>, Option<OrderBy>) {
+fn parse_query(q: &str) -> ParsedQuery {
     let mut or_groups: Vec<Vec<Pred>> = vec![vec![]];
     let mut global_not: Vec<Pred> = vec![];
     let mut pending_not = false;
@@ -586,7 +594,7 @@ fn parse_query(q: &str) -> (Vec<Vec<Pred>>, Vec<Pred>, Option<usize>, Option<usi
 
     // Drop empty groups (e.g. from a leading OR)
     let or_groups = or_groups.into_iter().filter(|g| !g.is_empty()).collect();
-    (or_groups, global_not, recent, oldest, order_by)
+    ParsedQuery { or_groups, global_not, recent, oldest, order_by }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
