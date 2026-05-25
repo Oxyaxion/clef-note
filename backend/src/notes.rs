@@ -79,6 +79,19 @@ fn is_safe_note_name(name: &str) -> bool {
         && !name.split('/').any(|seg| seg == "." || seg == "..")
 }
 
+fn note_path(storage: &std::path::Path, name: &str) -> std::path::PathBuf {
+    storage.join("notes").join(format!("{name}.md"))
+}
+
+pub fn read_mtime(path: &std::path::Path) -> i64 {
+    std::fs::metadata(path)
+        .ok()
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
 pub async fn get_note(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
@@ -86,7 +99,7 @@ pub async fn get_note(
     if !is_safe_note_name(&name) {
         return Err(StatusCode::BAD_REQUEST);
     }
-    let path = state.storage_path.join("notes").join(format!("{name}.md"));
+    let path = note_path(&state.storage_path, &name);
     let raw = tokio::fs::read_to_string(&path)
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
@@ -107,7 +120,7 @@ pub async fn put_note(
     if !is_safe_note_name(&name) {
         return Err(StatusCode::BAD_REQUEST);
     }
-    let path = state.storage_path.join("notes").join(format!("{name}.md"));
+    let path = note_path(&state.storage_path, &name);
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent)
             .await
@@ -155,8 +168,8 @@ pub async fn rename_note(
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    let old_path = state.storage_path.join("notes").join(format!("{name}.md"));
-    let new_path = state.storage_path.join("notes").join(format!("{new_name}.md"));
+    let old_path = note_path(&state.storage_path, &name);
+    let new_path = note_path(&state.storage_path, &new_name);
 
     if !old_path.exists() {
         return Err(StatusCode::NOT_FOUND);
@@ -207,7 +220,7 @@ pub async fn delete_note(
     if !is_safe_note_name(&name) {
         return Err(StatusCode::BAD_REQUEST);
     }
-    let path = state.storage_path.join("notes").join(format!("{name}.md"));
+    let path = note_path(&state.storage_path, &name);
     if !path.exists() {
         return Err(StatusCode::NOT_FOUND);
     }
@@ -343,13 +356,7 @@ fn update_wiki_links_in_notes(
             let Ok(rel) = path.strip_prefix(notes_dir) else { continue };
             let note_name = rel.with_extension("").to_string_lossy().replace('\\', "/");
             let parsed = crate::frontmatter::parse_note(&updated);
-            let mtime = std::fs::metadata(path)
-                .ok()
-                .and_then(|m| m.modified().ok())
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_secs() as i64)
-                .unwrap_or(0);
-            db.upsert(&note_name, &parsed, mtime);
+            db.upsert(&note_name, &parsed, read_mtime(path));
         }
     }
 }

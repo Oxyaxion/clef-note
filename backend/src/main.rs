@@ -155,14 +155,8 @@ fn index_all_notes(db: &db::Db, notes_dir: &std::path::Path) {
         let Ok(rel) = path.strip_prefix(notes_dir) else { continue };
         let name = rel.with_extension("").to_string_lossy().replace('\\', "/");
         if let Ok(content) = std::fs::read_to_string(path) {
-            let mtime = std::fs::metadata(path)
-                .ok()
-                .and_then(|m| m.modified().ok())
-                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                .map(|d| d.as_secs() as i64)
-                .unwrap_or(0);
             let parsed = frontmatter::parse_note(&content);
-            db.upsert(&name, &parsed, mtime);
+            db.upsert(&name, &parsed, notes::read_mtime(path));
         }
     }
 }
