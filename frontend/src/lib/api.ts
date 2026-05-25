@@ -164,8 +164,8 @@ export interface SearchResult {
     snippet: string;
 }
 
-export async function searchContent(q: string): Promise<SearchResult[]> {
-    const res = await apiFetch(`${BASE}/api/search?q=${encodeURIComponent(q)}`, { headers: authHeaders() });
+export async function searchContent(q: string, signal?: AbortSignal): Promise<SearchResult[]> {
+    const res = await apiFetch(`${BASE}/api/search?q=${encodeURIComponent(q)}`, { headers: authHeaders(), signal });
     if (!res.ok) throw new Error('Failed to search');
     return res.json();
 }

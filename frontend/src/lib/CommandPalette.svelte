@@ -42,6 +42,8 @@
 	let dslTagResults = $state<TagCount[]>([]);
 	let contentSearchTimer: ReturnType<typeof setTimeout> | null = null;
 	let dslSearchTimer: ReturnType<typeof setTimeout> | null = null;
+	let contentCtrl: AbortController | null = null;
+	let dslCtrl: AbortController | null = null;
 
 	const isCommandMode = $derived(query.startsWith('>'));
 	const isQueryMode = $derived(query.startsWith('?'));
@@ -202,40 +204,45 @@
 		selectedIndex = 0;
 	});
 
-	// Debounced content search
+	// Debounced content search — abort previous request when query changes
 	$effect(() => {
 		const q = query;
 		if (isCommandMode || isQueryMode || q.trim().length < 2) {
+			contentCtrl?.abort();
+			contentCtrl = null;
 			contentResults = [];
 			return;
 		}
 		if (contentSearchTimer) clearTimeout(contentSearchTimer);
-		contentSearchTimer = setTimeout(async () => {
-			try {
-				contentResults = await searchContent(q);
-			} catch {
-				contentResults = [];
-			}
+		contentSearchTimer = setTimeout(() => {
+			contentCtrl?.abort();
+			const ctrl = new AbortController();
+			contentCtrl = ctrl;
+			searchContent(q, ctrl.signal)
+				.then((r) => { contentResults = r; })
+				.catch((e) => { if (!(e instanceof DOMException && e.name === 'AbortError')) contentResults = []; });
 		}, 300);
 	});
 
-	// Debounced DSL query
+	// Debounced DSL query — abort previous request when query changes
 	$effect(() => {
 		const q = dslQuery;
 		if (!isQueryMode) {
+			dslCtrl?.abort();
+			dslCtrl = null;
 			dslResults = [];
 			dslTagResults = [];
 			return;
 		}
 		if (q.trim() === '#') {
 			if (dslSearchTimer) clearTimeout(dslSearchTimer);
-			dslSearchTimer = setTimeout(async () => {
-				try {
-					dslTagResults = await listTags();
-					dslResults = [];
-				} catch {
-					dslTagResults = [];
-				}
+			dslSearchTimer = setTimeout(() => {
+				dslCtrl?.abort();
+				const ctrl = new AbortController();
+				dslCtrl = ctrl;
+				listTags(ctrl.signal)
+					.then((r) => { dslTagResults = r; dslResults = []; })
+					.catch((e) => { if (!(e instanceof DOMException && e.name === 'AbortError')) dslTagResults = []; });
 			}, 150);
 			return;
 		}
@@ -245,12 +252,13 @@
 			return;
 		}
 		if (dslSearchTimer) clearTimeout(dslSearchTimer);
-		dslSearchTimer = setTimeout(async () => {
-			try {
-				dslResults = await queryNotes(q);
-			} catch {
-				dslResults = [];
-			}
+		dslSearchTimer = setTimeout(() => {
+			dslCtrl?.abort();
+			const ctrl = new AbortController();
+			dslCtrl = ctrl;
+			queryNotes(q, ctrl.signal)
+				.then((r) => { dslResults = r; })
+				.catch((e) => { if (!(e instanceof DOMException && e.name === 'AbortError')) dslResults = []; });
 		}, 300);
 	});
 
