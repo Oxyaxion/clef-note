@@ -3,6 +3,7 @@
 	import type { NoteMeta } from './api';
 	import { buildTree, flatten, type DisplayItem } from './sidebarTree';
 	import { storage } from './storage';
+	import { escapeHtml } from './utils';
 
 	interface Props {
 		notes: NoteMeta[];
@@ -99,11 +100,8 @@
 
 	function highlight(text: string, query: string): string {
 		const idx = text.toLowerCase().indexOf(query);
-		if (idx === -1) return esc(text);
-		return esc(text.slice(0, idx)) + '<mark>' + esc(text.slice(idx, idx + query.length)) + '</mark>' + esc(text.slice(idx + query.length));
-	}
-	function esc(s: string): string {
-		return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+		if (idx === -1) return escapeHtml(text);
+		return escapeHtml(text.slice(0, idx)) + '<mark>' + escapeHtml(text.slice(idx, idx + query.length)) + '</mark>' + escapeHtml(text.slice(idx + query.length));
 	}
 
 	function focus(el: HTMLElement) { el.focus(); }

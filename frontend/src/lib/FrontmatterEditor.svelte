@@ -1,6 +1,7 @@
 <script lang="ts">
     import { untrack, tick } from 'svelte';
     import type { Frontmatter } from './api';
+    import { escapeHtml } from './utils';
 
     interface Props {
         frontmatter: Frontmatter;
@@ -110,7 +111,7 @@
         if (/^-?\d+$/.test(v))      return parseInt(v, 10);
         if (/^-?\d+\.\d+$/.test(v)) return parseFloat(v);
         if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'")))
-            return v.slice(1, -1);
+            return v.slice(1, -1).replace(/\\(["\\])/g, '$1');
         return v;
     }
 
@@ -153,38 +154,33 @@
 
     // ── Syntax highlighter ────────────────────────────────────────────────────
 
-    function esc(s: string) {
-        return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    }
-
     function highlightValue(val: string): string {
         if (!val) return '';
         if (val.startsWith('[') && val.endsWith(']')) {
             const inner = val.slice(1, -1);
-            return `<span class="fy-p">[</span>${esc(inner)}<span class="fy-p">]</span>`;
+            return `<span class="fy-p">[</span>${escapeHtml(inner)}<span class="fy-p">]</span>`;
         }
-        if (val === 'true' || val === 'false')              return `<span class="fy-bool">${val}</span>`;
-        if (val === 'null' || val === '~')                   return `<span class="fy-null">${val}</span>`;
-        if (/^-?\d+(\.\d+)?$/.test(val))                    return `<span class="fy-num">${val}</span>`;
-        if (val.startsWith('"') || val.startsWith("'"))      return `<span class="fy-str">${esc(val)}</span>`;
-        return `<span class="fy-str">${esc(val)}</span>`;
+        if (val === 'true' || val === 'false')  return `<span class="fy-bool">${val}</span>`;
+        if (val === 'null' || val === '~')       return `<span class="fy-null">${val}</span>`;
+        if (/^-?\d+(\.\d+)?$/.test(val))        return `<span class="fy-num">${val}</span>`;
+        return `<span class="fy-str">${escapeHtml(val)}</span>`;
     }
 
     function highlightYaml(yaml: string): string {
         if (!yaml) return '';
         return yaml.split('\n').map(line => {
             if (/^\s*#/.test(line))
-                return `<span class="fy-comment">${esc(line)}</span>`;
+                return `<span class="fy-comment">${escapeHtml(line)}</span>`;
 
             const arr = line.match(/^(\s*-\s+)(.*)$/);
             if (arr)
-                return `<span class="fy-p">${esc(arr[1])}</span>${highlightValue(arr[2])}`;
+                return `<span class="fy-p">${escapeHtml(arr[1])}</span>${highlightValue(arr[2])}`;
 
             const kv = line.match(/^([a-zA-Z_][\w-]*)(:\s*)(.*)$/);
             if (kv)
-                return `<span class="fy-key">${esc(kv[1])}</span><span class="fy-p">${esc(kv[2])}</span>${highlightValue(kv[3])}`;
+                return `<span class="fy-key">${escapeHtml(kv[1])}</span><span class="fy-p">${escapeHtml(kv[2])}</span>${highlightValue(kv[3])}`;
 
-            return esc(line);
+            return escapeHtml(line);
         }).join('\n');
     }
 
