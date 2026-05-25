@@ -245,8 +245,8 @@ export async function deleteDrawing(name: string): Promise<void> {
     if (!res.ok) throw new Error('Failed to delete drawing');
 }
 
-export async function getDrawingPreview(name: string): Promise<string> {
-    const res = await apiFetch(`${BASE}/api/drawing-preview/${encodeName(name)}`, { headers: authHeaders() });
+export async function getDrawingPreview(name: string, signal?: AbortSignal): Promise<string> {
+    const res = await apiFetch(`${BASE}/api/drawing-preview/${encodeName(name)}`, { headers: authHeaders(), signal });
     if (!res.ok) throw new Error('No preview');
     return res.text();
 }

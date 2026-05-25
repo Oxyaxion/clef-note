@@ -165,6 +165,8 @@ export const DrawingBlock = Node.create({
             preview.style.height = `${node.attrs.height ?? 300}px`;
             dom.appendChild(preview);
 
+            let previewCtrl: AbortController | null = null;
+
             function setPreview(svg: string) {
                 preview.innerHTML = svg;
                 const svgEl = preview.querySelector('svg');
@@ -176,9 +178,12 @@ export const DrawingBlock = Node.create({
             }
 
             function loadPreview(n: string) {
-                getDrawingPreview(n)
+                previewCtrl?.abort();
+                previewCtrl = new AbortController();
+                getDrawingPreview(n, previewCtrl.signal)
                     .then(setPreview)
-                    .catch(() => {
+                    .catch((e) => {
+                        if (e instanceof DOMException && e.name === 'AbortError') return;
                         preview.innerHTML = '<span class="drawing-placeholder">Click Edit to start drawing</span>';
                     });
             }
@@ -261,7 +266,9 @@ export const DrawingBlock = Node.create({
                     preview.style.height = `${updatedNode.attrs.height ?? 300}px`;
                     return true;
                 },
-                destroy() {},
+                destroy() {
+                    previewCtrl?.abort();
+                },
             };
         };
     },
