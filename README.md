@@ -132,18 +132,24 @@ Create `/usr/local/etc/rc.d/clef-note`:
 
 . /etc/rc.subr
 
-name="clef-note"
-rcvar="clef-note_enable"
-command="/opt/clef-note/clef-note"
+name="clef_note"
+rcvar="${name}_enable"
+procname="/opt/clef-note/clef-note"
 pidfile="/var/run/${name}.pid"
+clef_note_config="/opt/clef-note/clef-note.toml"
+clef_note_storage="/opt/clef-note/storage"
 
-load_rc_config $name
+load_rc_config ${name}
+
+command="/usr/sbin/daemon"
+command_args="-P ${pidfile} -r -f ${procname} --config ${clef_note_config} --storage ${clef_note_storage}"
+
 run_rc_command "$1"
 ```
 
 ```bash
 chmod +x /usr/local/etc/rc.d/clef-note
-echo 'clef-note_enable="YES"' >> /etc/rc.conf
+echo 'clef_note_enable="YES"' >> /etc/rc.conf
 service clef-note start
 ```
 
