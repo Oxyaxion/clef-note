@@ -264,15 +264,16 @@ export async function saveDrawingPreview(name: string, svg: string): Promise<voi
 export interface AuthConfig {
     oidc_enabled: boolean;
     provider_name: string | null;
+    password_disabled: boolean;
 }
 
 export async function getAuthConfig(): Promise<AuthConfig> {
     try {
         const res = await fetch(`${BASE}/api/auth/config`);
-        if (!res.ok) return { oidc_enabled: false, provider_name: null };
+        if (!res.ok) return { oidc_enabled: false, provider_name: null, password_disabled: false };
         return res.json();
     } catch {
-        return { oidc_enabled: false, provider_name: null };
+        return { oidc_enabled: false, provider_name: null, password_disabled: false };
     }
 }
 

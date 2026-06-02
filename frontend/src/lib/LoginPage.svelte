@@ -12,12 +12,14 @@
 	let error = $state('');
 	let loading = $state(false);
 	let oidcEnabled = $state(false);
+	let passwordDisabled = $state(false);
 	let providerName = $state('SSO');
 	let configLoaded = $state(false);
 
 	onMount(async () => {
 		const cfg = await getAuthConfig();
 		oidcEnabled = cfg.oidc_enabled;
+		passwordDisabled = cfg.password_disabled;
 		providerName = cfg.provider_name ?? 'SSO';
 		configLoaded = true;
 	});
@@ -44,32 +46,40 @@
 
 		{#if !configLoaded}
 			<p class="hint">Loading…</p>
-		{:else if oidcEnabled}
+		{:else}
 			{#if oidcError === 'forbidden'}
 				<p class="error">Access denied. Your account is not authorised.</p>
 			{:else if oidcError}
 				<p class="error">Authentication failed. Please try again.</p>
 			{/if}
-			<a href="/auth/oidc/login" class="oidc-btn">
-				Connect with {providerName}
-			</a>
-		{:else}
-			<form onsubmit={submit} style="display:contents">
-				<input
-					type="password"
-					placeholder="Password"
-					bind:value={password}
-					autocomplete="current-password"
-					disabled={loading}
-					class="pwd-input"
-				/>
-				{#if error}
-					<p class="error">{error}</p>
+
+			{#if oidcEnabled}
+				<a href="/auth/oidc/login" class="oidc-btn">
+					Connect with {providerName}
+				</a>
+			{/if}
+
+			{#if !passwordDisabled}
+				{#if oidcEnabled}
+					<div class="separator"><span>or</span></div>
 				{/if}
-				<button type="submit" class="submit-btn" disabled={loading || !password}>
-					{loading ? 'Signing in…' : 'Sign in'}
-				</button>
-			</form>
+				<form onsubmit={submit} style="display:contents">
+					<input
+						type="password"
+						placeholder="Password"
+						bind:value={password}
+						autocomplete="current-password"
+						disabled={loading}
+						class="pwd-input"
+					/>
+					{#if error}
+						<p class="error">{error}</p>
+					{/if}
+					<button type="submit" class="submit-btn" disabled={loading || !password}>
+						{loading ? 'Signing in…' : 'Sign in'}
+					</button>
+				</form>
+			{/if}
 		{/if}
 	</div>
 </div>
@@ -161,4 +171,19 @@
 		transition: opacity 80ms;
 	}
 	.oidc-btn:hover { opacity: 0.88; }
+
+	.separator {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		color: var(--text-muted);
+		font-size: 0.78rem;
+	}
+	.separator::before,
+	.separator::after {
+		content: '';
+		flex: 1;
+		height: 1px;
+		background: var(--border);
+	}
 </style>

@@ -40,6 +40,7 @@ password = ""
 # redirect_uri  = "https://notes.example.com/auth/oidc/callback"
 # allowed_email = "user@example.com"           # restrict to a single user
 # provider_name = "Authelia"                   # label shown on the login button (optional)
+# disable_password_login = true                # hide password form when OIDC is active (optional)
 "#;
 
 #[derive(Deserialize, Clone)]
@@ -50,6 +51,7 @@ pub struct OidcConfig {
     pub redirect_uri: String,
     pub allowed_email: Option<String>,
     pub provider_name: Option<String>,
+    pub disable_password_login: Option<bool>,
 }
 
 // Never print the secret in logs.

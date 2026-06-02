@@ -94,7 +94,7 @@ pub async fn login(
     ConnectInfo(addr): ConnectInfo<std::net::SocketAddr>,
     Json(payload): Json<LoginPayload>,
 ) -> Result<Json<LoginResponse>, StatusCode> {
-    if state.oidc_client.is_some() {
+    if state.oidc_client.as_ref().map_or(false, |c| c.disable_password_login) {
         return Err(StatusCode::FORBIDDEN);
     }
 

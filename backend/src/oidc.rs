@@ -33,6 +33,7 @@ struct PendingState {
 pub struct OidcClient {
     client: CoreClient,
     pub provider_name: String,
+    pub disable_password_login: bool,
     allowed_email: Option<String>,
     pending: Mutex<HashMap<String, PendingState>>,
     one_time_codes: Mutex<HashMap<String, (String, Instant)>>,
@@ -59,6 +60,7 @@ pub async fn init(cfg: &crate::config::OidcConfig) -> Result<OidcClient, String>
     Ok(OidcClient {
         client,
         provider_name: cfg.provider_name.clone().unwrap_or_else(|| "SSO".to_string()),
+        disable_password_login: cfg.disable_password_login.unwrap_or(false),
         allowed_email: cfg.allowed_email.clone(),
         pending: Mutex::new(HashMap::new()),
         one_time_codes: Mutex::new(HashMap::new()),
@@ -205,13 +207,16 @@ pub async fn exchange_handler(
 pub struct AuthConfig {
     pub oidc_enabled: bool,
     pub provider_name: Option<String>,
+    pub password_disabled: bool,
 }
 
 pub async fn auth_config_handler(
     State(state): State<Arc<AppState>>,
 ) -> Json<AuthConfig> {
+    let oidc = state.oidc_client.as_ref();
     Json(AuthConfig {
-        oidc_enabled: state.oidc_client.is_some(),
-        provider_name: state.oidc_client.as_ref().map(|c| c.provider_name.clone()),
+        oidc_enabled: oidc.is_some(),
+        provider_name: oidc.map(|c| c.provider_name.clone()),
+        password_disabled: oidc.map_or(false, |c| c.disable_password_login),
     })
 }
