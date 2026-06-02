@@ -118,12 +118,22 @@ pub async fn callback_handler(
         return Ok(Redirect::to("/?oidc_error=1"));
     }
 
-    let code = params.code.ok_or(StatusCode::BAD_REQUEST)?;
-    let csrf_state = params.state.ok_or(StatusCode::BAD_REQUEST)?;
+    let code = params.code.ok_or_else(|| {
+        tracing::warn!("OIDC callback: missing 'code' parameter");
+        StatusCode::BAD_REQUEST
+    })?;
+    let csrf_state = params.state.ok_or_else(|| {
+        tracing::warn!("OIDC callback: missing 'state' parameter");
+        StatusCode::BAD_REQUEST
+    })?;
 
     let pending_state = {
         let mut pending = oidc.pending.lock().unwrap();
-        pending.remove(&csrf_state).ok_or(StatusCode::BAD_REQUEST)?
+        let count = pending.len();
+        pending.remove(&csrf_state).ok_or_else(|| {
+            tracing::warn!("OIDC callback: state not found in pending map (pending={count}, state_len={})", csrf_state.len());
+            StatusCode::BAD_REQUEST
+        })?
     };
 
     if Instant::now() > pending_state.expires {

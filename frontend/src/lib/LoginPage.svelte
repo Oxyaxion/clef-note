@@ -54,7 +54,7 @@
 			{/if}
 
 			{#if oidcEnabled}
-				<a href="/auth/oidc/login" class="oidc-btn">
+				<a href="/auth/oidc/login" class="oidc-btn" data-sveltekit-reload>
 					Connect with {providerName}
 				</a>
 			{/if}
