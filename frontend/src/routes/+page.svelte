@@ -17,6 +17,7 @@
 		serializeFrontmatter,
 		session,
 		logout,
+		exchangeOidcCode,
 		type NoteMeta,
 		type Frontmatter,
 	} from '$lib/api';
@@ -51,6 +52,7 @@
 	let currentTheme = $state<ThemeId>('default');
 	let vaultName = $state('Notes');
 	let loggedIn = $state(session.exists());
+	let oidcError = $state<string | null>(null);
 	let settingsOpen = $state(false);
 	let metaPageOpen = $state(false);
 	let currentSettings = $state<AppSettings>({ ...DEFAULT });
@@ -74,6 +76,17 @@
 
 	// One-time setup: auth expiry + media query — neither depends on reactive state.
 	onMount(() => {
+		const params = new URLSearchParams(window.location.search);
+		const oidcCode = params.get('oidc_code');
+		const oidcErr = params.get('oidc_error');
+		if (oidcCode) {
+			history.replaceState({}, '', '/');
+			exchangeOidcCode(oidcCode).then(() => { loggedIn = true; }).catch(() => {});
+		} else if (oidcErr) {
+			history.replaceState({}, '', '/');
+			oidcError = oidcErr;
+		}
+
 		const offAuth = on(window, 'auth:expired', () => { loggedIn = false; });
 		const mq = window.matchMedia('(max-width: 640px)');
 		isMobile = mq.matches;
@@ -238,7 +251,7 @@
 <svelte:window onkeydown={onGlobalKeydown} />
 
 {#if !loggedIn}
-	<LoginPage onLogin={() => { loggedIn = true; }} />
+	<LoginPage onLogin={() => { loggedIn = true; }} {oidcError} />
 {:else}
 
 {#if confirmDialog}

@@ -1,12 +1,26 @@
 <script lang="ts">
-	import { login } from './api';
+	import { onMount } from 'svelte';
+	import { login, getAuthConfig } from './api';
 
-	interface Props { onLogin: () => void; }
-	let { onLogin }: Props = $props();
+	interface Props {
+		onLogin: () => void;
+		oidcError?: string | null;
+	}
+	let { onLogin, oidcError = null }: Props = $props();
 
 	let password = $state('');
 	let error = $state('');
 	let loading = $state(false);
+	let oidcEnabled = $state(false);
+	let providerName = $state('SSO');
+	let configLoaded = $state(false);
+
+	onMount(async () => {
+		const cfg = await getAuthConfig();
+		oidcEnabled = cfg.oidc_enabled;
+		providerName = cfg.provider_name ?? 'SSO';
+		configLoaded = true;
+	});
 
 	async function submit(e: Event) {
 		e.preventDefault();
@@ -25,23 +39,39 @@
 </script>
 
 <div class="login-wrap">
-	<form class="login-card" onsubmit={submit}>
+	<div class="login-card">
 		<h1 class="app-name">Clef Note</h1>
-		<input
-			type="password"
-			placeholder="Password"
-			bind:value={password}
-			autocomplete="current-password"
-			disabled={loading}
-			class="pwd-input"
-		/>
-		{#if error}
-			<p class="error">{error}</p>
+
+		{#if !configLoaded}
+			<p class="hint">Loading…</p>
+		{:else if oidcEnabled}
+			{#if oidcError === 'forbidden'}
+				<p class="error">Access denied. Your account is not authorised.</p>
+			{:else if oidcError}
+				<p class="error">Authentication failed. Please try again.</p>
+			{/if}
+			<a href="/auth/oidc/login" class="oidc-btn">
+				Connect with {providerName}
+			</a>
+		{:else}
+			<form onsubmit={submit} style="display:contents">
+				<input
+					type="password"
+					placeholder="Password"
+					bind:value={password}
+					autocomplete="current-password"
+					disabled={loading}
+					class="pwd-input"
+				/>
+				{#if error}
+					<p class="error">{error}</p>
+				{/if}
+				<button type="submit" class="submit-btn" disabled={loading || !password}>
+					{loading ? 'Signing in…' : 'Sign in'}
+				</button>
+			</form>
 		{/if}
-		<button type="submit" class="submit-btn" disabled={loading || !password}>
-			{loading ? 'Signing in…' : 'Sign in'}
-		</button>
-	</form>
+	</div>
 </div>
 
 <style>
@@ -71,6 +101,12 @@
 		color: var(--text);
 		margin: 0 0 0.5rem;
 		letter-spacing: -0.02em;
+	}
+
+	.hint {
+		font-size: 0.85rem;
+		color: var(--text-muted);
+		margin: 0;
 	}
 
 	.pwd-input {
@@ -108,4 +144,21 @@
 	}
 	.submit-btn:hover:not(:disabled) { opacity: 0.88; }
 	.submit-btn:disabled { opacity: 0.45; cursor: default; }
+
+	.oidc-btn {
+		display: block;
+		padding: 0.55rem;
+		background: var(--accent);
+		border: none;
+		border-radius: 7px;
+		color: var(--bg);
+		font-size: 0.9rem;
+		font-family: inherit;
+		font-weight: 500;
+		cursor: pointer;
+		text-align: center;
+		text-decoration: none;
+		transition: opacity 80ms;
+	}
+	.oidc-btn:hover { opacity: 0.88; }
 </style>

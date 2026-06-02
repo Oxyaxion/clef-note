@@ -261,6 +261,32 @@ export async function saveDrawingPreview(name: string, svg: string): Promise<voi
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
+export interface AuthConfig {
+    oidc_enabled: boolean;
+    provider_name: string | null;
+}
+
+export async function getAuthConfig(): Promise<AuthConfig> {
+    try {
+        const res = await fetch(`${BASE}/api/auth/config`);
+        if (!res.ok) return { oidc_enabled: false, provider_name: null };
+        return res.json();
+    } catch {
+        return { oidc_enabled: false, provider_name: null };
+    }
+}
+
+export async function exchangeOidcCode(code: string): Promise<void> {
+    const res = await fetch(`${BASE}/auth/oidc/exchange`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+    });
+    if (!res.ok) throw new Error('OIDC exchange failed');
+    const data = await res.json();
+    storage.token.set(data.token);
+}
+
 export async function login(password: string): Promise<void> {
     const res = await fetch(`${BASE}/auth/login`, {
         method: 'POST',

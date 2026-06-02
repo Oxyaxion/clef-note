@@ -19,10 +19,10 @@
 - API to query from the CLI (`scripts/an`).
 - OpenAI-compatible endpoint to plug in an LLM.
 - **Git sync** — push notes to any GitHub / Gitea / Forgejo / GitLab repository (HTTPS token).
+- **OIDC authentication** — delegate login to Authelia, Authentik, Keycloak or any OIDC-compliant provider.
 
 ## Road map
 
-- OpenID Authentication
 - Dashboard system
 - Any ideas?
 
@@ -134,15 +134,14 @@ Create `/usr/local/etc/rc.d/clef-note`:
 
 name="clef_note"
 rcvar="${name}_enable"
-procname="/opt/clef-note/clef-note"
+procname="/usr/local/sbin/clef-note/clef-note"
 pidfile="/var/run/${name}.pid"
-clef_note_config="/opt/clef-note/clef-note.toml"
-clef_note_storage="/opt/clef-note/storage"
+clef_note_config="/usr/local/etc/clef-note/clef-note.toml"
 
 load_rc_config ${name}
 
 command="/usr/sbin/daemon"
-command_args="-P ${pidfile} -r -f ${procname} --config ${clef_note_config} --storage ${clef_note_storage}"
+command_args="-P ${pidfile} -r -f ${procname} --config ${clef_note_config}"
 
 run_rc_command "$1"
 ```
@@ -160,7 +159,7 @@ service clef-note start
 All configuration lives in `clef-note.toml`, looked up next to the binary by default. A template is provided at [`clef-note.toml.example`](clef-note.toml.example).
 
 ```toml
-# Required — hash with: ./clef-note --hash-password "yourpassword"
+# Required unless [oidc] is configured — hash with: ./clef-note --hash-password "yourpassword"
 password = "$argon2id$v=19$..."
 
 # Optional
@@ -175,6 +174,15 @@ password = "$argon2id$v=19$..."
 # interval_minutes = 30        # 0 = manual only (Settings UI button)
 # author_name  = "clef-note"   # optional
 # author_email = "sync@local"  # optional
+
+# OIDC — optional. When configured, password login is disabled.
+# [oidc]
+# issuer_url    = "https://auth.example.com"
+# client_id     = "clef-note"
+# client_secret = "..."
+# redirect_uri  = "https://notes.example.com/auth/oidc/callback"
+# allowed_email = "user@example.com"   # restrict to a single user
+# provider_name = "Authelia"           # label on the login button (optional)
 ```
 
 **CLI flags** (override the config file):
@@ -208,10 +216,15 @@ To import existing notes, copy your `.md` files into the storage directory — t
 
 | Client | Mechanism |
 |--------|-----------|
-| Web UI | Password → session token (localStorage, 30-day TTL) |
+| Web UI — password mode | Password → session token (localStorage, 30-day TTL) |
+| Web UI — OIDC mode | Authorization Code + PKCE via external provider |
 | CLI (`scripts/an`) | `AN_KEY` env var = `api_key` from config |
 
 The web UI shows a login page on first visit. Sessions expire after 30 days or on sign out.
+
+**OIDC mode** — add an `[oidc]` section to `clef-note.toml` (see above). The login page will show a single "Connect with \<provider\>" button instead of the password form. Password login is fully disabled when OIDC is active.
+
+Tested with Authelia and Authentik. Any provider that exposes a standard OIDC discovery endpoint (`/.well-known/openid-configuration`) should work.
 
 ---
 

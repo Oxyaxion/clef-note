@@ -5,6 +5,7 @@ const TEMPLATE: &str = r#"# Clef Note — configuration
 
 # Password for the web UI login.
 # Hash with: ./clef-note --hash-password "yourpassword"
+# Not required when [oidc] is configured.
 password = ""
 
 # Storage directory — optional. Defaults to ../storage (relative to the backend/).
@@ -28,7 +29,42 @@ password = ""
 # interval_minutes = 30       # 0 = manual only (use the Settings UI button)
 # author_name = "clef-note"   # optional — commit author name
 # author_email = "sync@local" # optional — commit author email
+
+# OIDC — optional. Delegate authentication to an external provider.
+# Works with Authelia, Authentik, Keycloak, and any OIDC-compliant provider.
+# When configured, password login is disabled entirely.
+# [oidc]
+# issuer_url    = "https://auth.example.com"   # provider discovery URL
+# client_id     = "clef-note"
+# client_secret = "..."
+# redirect_uri  = "https://notes.example.com/auth/oidc/callback"
+# allowed_email = "user@example.com"           # restrict to a single user
+# provider_name = "Authelia"                   # label shown on the login button (optional)
 "#;
+
+#[derive(Deserialize, Clone)]
+pub struct OidcConfig {
+    pub issuer_url: String,
+    pub client_id: String,
+    pub client_secret: String,
+    pub redirect_uri: String,
+    pub allowed_email: Option<String>,
+    pub provider_name: Option<String>,
+}
+
+// Never print the secret in logs.
+impl fmt::Debug for OidcConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("OidcConfig")
+            .field("issuer_url", &self.issuer_url)
+            .field("client_id", &self.client_id)
+            .field("client_secret", &"[REDACTED]")
+            .field("redirect_uri", &self.redirect_uri)
+            .field("allowed_email", &self.allowed_email)
+            .field("provider_name", &self.provider_name)
+            .finish()
+    }
+}
 
 #[derive(Deserialize, Clone)]
 pub struct SyncConfig {
@@ -54,11 +90,12 @@ impl fmt::Debug for SyncConfig {
 
 #[derive(Deserialize)]
 pub struct Config {
-    pub password: String,
+    pub password: Option<String>,
     pub storage: Option<String>,
     pub port: Option<u16>,
     pub api_key: Option<String>,
     pub sync: Option<SyncConfig>,
+    pub oidc: Option<OidcConfig>,
 }
 
 pub fn resolve_path(storage_path: &std::path::Path) -> std::path::PathBuf {
@@ -98,16 +135,28 @@ pub fn load(storage_path: &std::path::Path) -> Config {
         }
     };
 
-    if cfg.password.trim().is_empty() {
-        eprintln!("error: password is not set in clef-note.toml");
-        eprintln!("       Hash one with: ./clef-note --hash-password \"yourpassword\"");
-        std::process::exit(1);
+    if cfg.oidc.is_none() {
+        let pwd = cfg.password.as_deref().unwrap_or("").trim();
+        if pwd.is_empty() {
+            eprintln!("error: password is not set in clef-note.toml");
+            eprintln!("       Hash one with: ./clef-note --hash-password \"yourpassword\"");
+            eprintln!("       Or configure [oidc] for SSO authentication.");
+            std::process::exit(1);
+        }
+        if !pwd.starts_with("$argon2") {
+            eprintln!("error: password in clef-note.toml must be an Argon2 hash");
+            eprintln!("       Generate with: ./clef-note --hash-password \"yourpassword\"");
+            std::process::exit(1);
+        }
     }
 
-    if !cfg.password.starts_with("$argon2") {
-        eprintln!("error: password in clef-note.toml must be an Argon2 hash");
-        eprintln!("       Generate with: ./clef-note --hash-password \"yourpassword\"");
-        std::process::exit(1);
+    if let Some(oidc) = &cfg.oidc {
+        if oidc.issuer_url.trim().is_empty() || oidc.client_id.trim().is_empty()
+            || oidc.client_secret.trim().is_empty() || oidc.redirect_uri.trim().is_empty()
+        {
+            eprintln!("error: [oidc] requires issuer_url, client_id, client_secret, and redirect_uri");
+            std::process::exit(1);
+        }
     }
 
     if let Some(sync) = &cfg.sync {

@@ -94,6 +94,10 @@ pub async fn login(
     ConnectInfo(addr): ConnectInfo<std::net::SocketAddr>,
     Json(payload): Json<LoginPayload>,
 ) -> Result<Json<LoginResponse>, StatusCode> {
+    if state.oidc_client.is_some() {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
     let ip = addr.ip();
 
     if state.login_guard.is_locked(ip) {

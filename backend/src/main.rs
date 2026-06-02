@@ -7,6 +7,7 @@ mod frontend;
 mod frontmatter;
 mod key;
 mod notes;
+mod oidc;
 mod openapi;
 mod query;
 mod seed;
@@ -32,6 +33,7 @@ pub struct AppState {
     pub login_guard: auth::LoginGuard,
     pub sync_config: Option<config::SyncConfig>,
     pub sync_status: sync::SharedSyncStatus,
+    pub oidc_client: Option<oidc::OidcClient>,
 }
 
 #[tokio::main]
@@ -99,16 +101,32 @@ async fn setup_state() -> (AppState, u16) {
 
     let sync_status = sync::new_status(cfg.sync.is_some());
 
+    let oidc_client = if let Some(oidc_cfg) = &cfg.oidc {
+        match oidc::init(oidc_cfg).await {
+            Ok(c) => {
+                tracing::info!("OIDC configured with provider '{}'", c.provider_name);
+                Some(c)
+            }
+            Err(e) => {
+                eprintln!("error: OIDC init failed: {e}");
+                std::process::exit(1);
+            }
+        }
+    } else {
+        None
+    };
+
     let state = AppState {
         storage_path,
         backlink_index: tokio::sync::RwLock::new(backlink_index),
         db,
-        password_hash: cfg.password,
+        password_hash: cfg.password.unwrap_or_default(),
         sessions: session::SessionStore::new(),
         api_key: cfg.api_key,
         login_guard: auth::LoginGuard::new(),
         sync_config: cfg.sync,
         sync_status,
+        oidc_client,
     };
     (state, port)
 }
@@ -190,6 +208,10 @@ async fn run_server(state: Arc<AppState>, port: u16) {
     let app = Router::new()
         .merge(protected)
         .route("/auth/login", post(auth::login))
+        .route("/auth/oidc/login", get(oidc::login_handler))
+        .route("/auth/oidc/callback", get(oidc::callback_handler))
+        .route("/auth/oidc/exchange", post(oidc::exchange_handler))
+        .route("/api/auth/config", get(oidc::auth_config_handler))
         .route("/assets/{*filename}", get(notes::serve_asset))
         .fallback(frontend::handler)
         .with_state(state)
