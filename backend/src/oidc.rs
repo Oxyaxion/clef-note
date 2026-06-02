@@ -13,8 +13,8 @@ use axum::{
 };
 use openidconnect::{
     AuthorizationCode, ClientId, ClientSecret, CsrfToken, IssuerUrl, Nonce,
-    PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope, TokenResponse,
-    core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata},
+    OAuth2TokenResponse, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope, TokenResponse,
+    core::{CoreAuthenticationFlow, CoreClient, CoreProviderMetadata, CoreUserInfoClaims},
     reqwest::async_http_client,
 };
 use serde::{Deserialize, Serialize};
@@ -164,7 +164,26 @@ pub async fn callback_handler(
         })?;
 
     if let Some(allowed) = &oidc.allowed_email {
-        let email = claims.email().map(|e| e.as_str()).unwrap_or("");
+        // Some providers (e.g. Authelia) put the email only in the userinfo endpoint,
+        // not in the ID token. Fall back to a userinfo request if the ID token has no email.
+        let email = match claims.email().map(|e| e.as_str().to_string()) {
+            Some(e) if !e.is_empty() => e,
+            _ => {
+                let userinfo: CoreUserInfoClaims = oidc.client
+                    .user_info(token_response.access_token().clone(), Some(claims.subject().clone()))
+                    .map_err(|e| {
+                        tracing::warn!("OIDC: userinfo request setup failed: {e}");
+                        StatusCode::UNAUTHORIZED
+                    })?
+                    .request_async(async_http_client)
+                    .await
+                    .map_err(|e| {
+                        tracing::warn!("OIDC: userinfo request failed: {e}");
+                        StatusCode::UNAUTHORIZED
+                    })?;
+                userinfo.email().map(|e| e.as_str().to_string()).unwrap_or_default()
+            }
+        };
         if email != allowed.as_str() {
             tracing::warn!("OIDC: rejected email '{email}'");
             return Ok(Redirect::to("/?oidc_error=forbidden"));
