@@ -183,6 +183,7 @@ password = "$argon2id$v=19$..."
 # redirect_uri  = "https://notes.example.com/auth/oidc/callback"
 # allowed_email = "user@example.com"   # restrict to a single user
 # provider_name = "Authelia"           # label on the login button (optional)
+# disable_password_login = true        # hide password form when OIDC is active (optional)
 ```
 
 **CLI flags** (override the config file):
@@ -222,7 +223,7 @@ To import existing notes, copy your `.md` files into the storage directory — t
 
 The web UI shows a login page on first visit. Sessions expire after 30 days or on sign out.
 
-**OIDC mode** — add an `[oidc]` section to `clef-note.toml` (see above). The login page will show a single "Connect with \<provider\>" button instead of the password form. Password login is fully disabled when OIDC is active.
+**OIDC mode** — add an `[oidc]` section to `clef-note.toml` (see above). By default both the OIDC button and the password form are shown, so you can keep a fallback. Set `disable_password_login = true` to show the OIDC button only.
 
 Tested with Authelia and Authentik. Any provider that exposes a standard OIDC discovery endpoint (`/.well-known/openid-configuration`) should work.
 
