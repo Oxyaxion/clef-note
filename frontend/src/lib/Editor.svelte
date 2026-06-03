@@ -21,6 +21,7 @@
 	import { makeCodeBlockNodeView } from './codeBlockNodeView';
 	import { ResizableImage } from './resizableImage';
 	import { ExitBlockquote, ExitEmptyListItem } from './editorExtensions';
+	import { ParagraphMd } from './paragraphMd';
 	import BubbleMenu from './BubbleMenu.svelte';
 	import LinkPrompt from './LinkPrompt.svelte';
 	import TableToolbar from './TableToolbar.svelte';
@@ -72,7 +73,8 @@
 		editor = new Editor({
 			element,
 			extensions: [
-				StarterKit.configure({ codeBlock: false }),
+				StarterKit.configure({ codeBlock: false, paragraph: false }),
+				ParagraphMd,
 				Placeholder.configure({ placeholder: 'Start writing… (type / for commands)' }),
 				Markdown.configure({ html: false, transformPastedText: true }),
 				ResizableImage,
