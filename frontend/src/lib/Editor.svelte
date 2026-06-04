@@ -276,6 +276,9 @@
 	:global(.tiptap-editor h1) { font-size: 2rem; font-weight: 600; margin: 1.5rem 0 0.8rem; line-height: 1.3; }
 	:global(.tiptap-editor h2) { font-size: 1.5rem; font-weight: 600; margin: 1.2rem 0 0.65rem; line-height: 1.3; }
 	:global(.tiptap-editor h3) { font-size: 1.2rem; font-weight: 600; margin: 1rem 0 0.5rem; line-height: 1.3; }
+	:global(.tiptap-editor h4) { font-size: 1.05rem; font-weight: 600; margin: 0.9rem 0 0.45rem; line-height: 1.3; }
+	:global(.tiptap-editor h5) { font-size: 0.95rem; font-weight: 600; margin: 0.8rem 0 0.4rem; line-height: 1.3; }
+	:global(.tiptap-editor h6) { font-size: 0.88rem; font-weight: 600; margin: 0.8rem 0 0.4rem; line-height: 1.3; }
 
 	/* Paragraphs */
 	:global(.tiptap-editor p) { margin: 0 0 0.6rem; }
