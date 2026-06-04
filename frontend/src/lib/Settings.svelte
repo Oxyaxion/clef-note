@@ -55,6 +55,8 @@
 <div class="backdrop" onmousedown={onBackdropClick}>
 	<div class="modal" role="dialog" aria-label="Settings" aria-modal="true" use:focusTrap tabindex="-1">
 
+		<button class="grabber" onclick={onClose} aria-label="Close"></button>
+
 		<div class="modal-header">
 			<span class="modal-title">Settings</span>
 			<button class="close-btn" onclick={onClose} aria-label="Close">✕</button>
@@ -87,6 +89,7 @@
 		justify-content: center;
 		z-index: 200;
 		padding: 1rem;
+		animation: backdrop-in 180ms ease;
 	}
 
 	.modal {
@@ -101,6 +104,24 @@
 		flex-direction: column;
 		overflow: hidden;
 		outline: none;
+		animation: modal-in 180ms ease;
+	}
+
+	@keyframes backdrop-in {
+		from { opacity: 0; }
+	}
+
+	@keyframes modal-in {
+		from { opacity: 0; transform: scale(0.97); }
+	}
+
+	@keyframes sheet-in {
+		from { transform: translateY(100%); }
+	}
+
+	/* ── Grabber (mobile bottom-sheet handle) ────────────── */
+	.grabber {
+		display: none;
 	}
 
 	.modal-header {
@@ -192,9 +213,81 @@
 		.modal {
 			width: 100%;
 			max-width: 100%;
-			border-radius: 16px 16px 0 0;
-			max-height: 90vh;
-			padding-bottom: env(safe-area-inset-bottom, 0);
+			border-radius: 20px 20px 0 0;
+			max-height: 92vh;
+			animation: sheet-in 280ms cubic-bezier(0.32, 0.72, 0, 1);
+		}
+
+		/* poignée de préhension */
+		.grabber {
+			display: block;
+			width: 100%;
+			padding: 0;
+			margin: 0;
+			height: 22px;
+			position: relative;
+			background: none;
+			border: none;
+			cursor: pointer;
+			flex-shrink: 0;
+		}
+
+		.grabber::before {
+			content: '';
+			position: absolute;
+			top: 9px;
+			left: 50%;
+			transform: translateX(-50%);
+			width: 38px;
+			height: 4px;
+			border-radius: 999px;
+			background: var(--border);
+		}
+
+		.modal-header {
+			padding: 0.25rem 1rem 0.75rem;
+		}
+
+		.modal-title {
+			font-size: 1.1rem;
+		}
+
+		/* cible tactile confortable */
+		.close-btn {
+			font-size: 1rem;
+			padding: 0.5rem 0.7rem;
+		}
+
+		.modal-body {
+			padding: 1.1rem 1.25rem;
+			gap: 2rem;
+		}
+
+		.modal-footer {
+			flex-wrap: wrap;
+			gap: 0.6rem 0.75rem;
+			padding: 0.85rem 1.25rem;
+			padding-bottom: calc(0.85rem + env(safe-area-inset-bottom, 0));
+		}
+
+		/* Sign out devient l'action principale, pleine largeur */
+		.signout-btn {
+			order: 1;
+			flex: 1 1 100%;
+			text-align: center;
+			padding: 0.7rem;
+			font-size: 0.9rem;
+			border-radius: 8px;
+		}
+
+		.footer-hint { order: 2; }
+		.version-hint { order: 3; margin-left: auto; }
+	}
+
+	@media (prefers-reduced-motion: reduce) {
+		.backdrop,
+		.modal {
+			animation: none;
 		}
 	}
 </style>
