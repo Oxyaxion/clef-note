@@ -126,6 +126,50 @@ h1, h2, h3, h4, h5, h6 { font-size: inherit; font-weight: inherit; }
 	--code-inline-bg:    rgba(136, 57, 239, 0.08);
 }
 
+/* ── Desert (dark) ───────────────────────────────────────────── */
+[data-theme="desert"] {
+	color-scheme: dark;
+	--bg:         #14110c;   /* nuit chaude — brun très sombre */
+	--text:       #ddd0bc;   /* sable clair, chaud */
+	--sidebar-bg: #181410;
+	--border:     #2a261f;
+	--accent:     #8fb3c2;   /* bleu délavé — touche fraîche, feutrée */
+	--muted:      #8a8275;   /* sable grisé — contraste AA */
+
+	--h1-color: #e6c384;   /* or doux (Kanagawa) */
+	--h2-color: #8fb3c2;   /* bleu délavé */
+	--h3-color: #d9a679;   /* ambre / argile */
+	--h4-color: #b5c99a;   /* sauge — végétation de désert */
+	--h5-color: #e8b98a;   /* abricot */
+	--h6-color: #c9897b;   /* terre cuite */
+
+	--code-bg:           #181410;
+	--code-inline-color: #e6c384;
+	--code-inline-bg:    rgba(230, 195, 132, 0.10);
+}
+
+/* ── Gruvbox Light ───────────────────────────────────────────── */
+[data-theme="gruvbox-light"] {
+	color-scheme: light;
+	--bg:         #fbf1c7;
+	--text:       #3c3836;
+	--sidebar-bg: #ebdbb2;
+	--border:     #d5c4a1;
+	--accent:     #076678;
+	--muted:      #7c6f64;   /* fg4 — contraste ~4.6:1, WCAG AA */
+
+	--h1-color: #9d0006;   /* rouge passé */
+	--h2-color: #b57614;   /* jaune / orange passé */
+	--h3-color: #79740e;   /* vert passé */
+	--h4-color: #8f3f71;   /* violet passé */
+	--h5-color: #076678;   /* bleu passé */
+	--h6-color: #af3a03;   /* orange passé */
+
+	--code-bg:           #ebdbb2;
+	--code-inline-color: #af3a03;
+	--code-inline-bg:    rgba(175, 58, 3, 0.08);
+}
+
 /* ── Règles communes à tous les thèmes ───────────────────────── */
 /* Appliquées à [data-theme] ; les règles github-dark ci-dessous
    ont même spécificité mais viennent après → elles priment. */

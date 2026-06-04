@@ -7,6 +7,8 @@ export const THEMES = [
     { id: 'solarized',   label: 'Solarized' },
     { id: 'catppuccin',  label: 'Catppuccin' },
     { id: 'github-dark', label: 'GitHub Dark' },
+    { id: 'desert', label: 'Desert' },
+    { id: 'gruvbox-light', label: 'Gruvbox Light' },
 ] as const;
 
 export type ThemeId = typeof THEMES[number]['id'];

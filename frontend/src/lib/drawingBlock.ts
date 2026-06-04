@@ -236,7 +236,7 @@ export const DrawingBlock = Node.create({
 
             // ── Event handlers ─────────────────────────────────────────────
             editBtn.addEventListener('click', () => {
-                const DARK_THEMES = new Set(['github-dark', 'dracula', 'rose-pine', 'catppuccin']);
+                const DARK_THEMES = new Set(['github-dark', 'dracula', 'rose-pine', 'desert']);
                 const theme = document.documentElement.getAttribute('data-theme') ?? '';
                 const isDark = DARK_THEMES.has(theme)
                     || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
