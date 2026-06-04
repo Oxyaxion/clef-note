@@ -16,10 +16,14 @@ use crate::AppState;
 
 const MAX_FAILURES: u32 = 3;
 const LOCKOUT: Duration = Duration::from_secs(60);
+// Idle records (not currently locked, no recent failures) are evicted after this,
+// so the per-IP map can't grow unbounded under a multi-IP brute-force.
+const RETENTION: Duration = Duration::from_secs(600);
 
 struct FailRecord {
     count: u32,
     locked_until: Option<Instant>,
+    last_seen: Instant,
 }
 
 pub struct LoginGuard {
@@ -39,16 +43,22 @@ impl LoginGuard {
     }
 
     pub fn record_failure(&self, ip: IpAddr) {
+        let now = Instant::now();
         let mut map = self.map.write().unwrap();
-        let rec = map.entry(ip).or_insert(FailRecord { count: 0, locked_until: None });
+        // Evict stale entries: not locked and idle for longer than RETENTION.
+        map.retain(|_, r| {
+            r.locked_until.is_some_and(|u| now < u) || now.duration_since(r.last_seen) < RETENTION
+        });
+        let rec = map.entry(ip).or_insert(FailRecord { count: 0, locked_until: None, last_seen: now });
         // Reset if a previous lockout has expired
-        if rec.locked_until.is_some_and(|u| Instant::now() >= u) {
+        if rec.locked_until.is_some_and(|u| now >= u) {
             rec.count = 0;
             rec.locked_until = None;
         }
         rec.count += 1;
+        rec.last_seen = now;
         if rec.count >= MAX_FAILURES {
-            rec.locked_until = Some(Instant::now() + LOCKOUT);
+            rec.locked_until = Some(now + LOCKOUT);
         }
     }
 
