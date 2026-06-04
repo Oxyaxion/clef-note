@@ -16,9 +16,10 @@
 		onNew: (name: string) => void;
 		onMobileClose?: () => void;
 		onCreateStarted?: () => void;
+		onSettings?: () => void;
 	}
 
-	let { notes, selected, vaultName = 'Notes', mobileOpen = false, startCreating = false, hidden = false, onSelect, onNew, onMobileClose, onCreateStarted }: Props = $props();
+	let { notes, selected, vaultName = 'Notes', mobileOpen = false, startCreating = false, hidden = false, onSelect, onNew, onMobileClose, onCreateStarted, onSettings }: Props = $props();
 
 	$effect(() => {
 		if (startCreating) {
@@ -282,6 +283,18 @@
 					<li class="filter-empty">No results</li>
 				{/if}
 			</ul>
+		{/if}
+
+		{#if onSettings}
+			<div class="sidebar-footer">
+				<button class="footer-btn" onclick={() => onSettings?.()} title="Settings" aria-label="Settings">
+					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+						<circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/>
+						<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+					</svg>
+					<span>Settings</span>
+				</button>
+			</div>
 		{/if}
 	{/if}
 
@@ -623,6 +636,38 @@
 		flex-shrink: 0;
 	}
 
+	/* ── Footer (settings) ───────────────────────────────── */
+	.sidebar-footer {
+		border-top: 1px solid var(--border);
+		flex-shrink: 0;
+		padding: 0.25rem;
+	}
+
+	.footer-btn {
+		width: 100%;
+		display: flex;
+		align-items: center;
+		gap: 0.55rem;
+		padding: 0.5rem 0.6rem;
+		background: none;
+		border: none;
+		border-radius: 6px;
+		color: var(--text);
+		cursor: pointer;
+		font-family: inherit;
+		font-size: 0.88rem;
+		transition: background 80ms;
+	}
+
+	.footer-btn:hover {
+		background: var(--border);
+	}
+
+	.footer-btn svg {
+		color: var(--muted);
+		flex-shrink: 0;
+	}
+
 	/* ── Mobile ──────────────────────────────────────────── */
 	@media (max-width: 640px) {
 		.sidebar {
@@ -653,6 +698,14 @@
 			z-index: 149;
 			border: none;
 			cursor: default;
+		}
+
+		.footer-btn {
+			padding: 0.7rem 0.6rem;
+		}
+
+		.sidebar-footer {
+			padding-bottom: calc(0.25rem + env(safe-area-inset-bottom, 0));
 		}
 	}
 </style>

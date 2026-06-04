@@ -322,6 +322,7 @@
 		onNew={createNote}
 		onMobileClose={() => (sidebarOpen = false)}
 		onCreateStarted={() => (creatingFromPalette = false)}
+		onSettings={() => { sidebarOpen = false; settingsOpen = true; }}
 	/>
 
 	<main class="main">
