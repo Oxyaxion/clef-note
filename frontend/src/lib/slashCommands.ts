@@ -142,15 +142,29 @@ export const SlashCommand = Extension.create({
 				state: {
 					init: () => false,
 					apply: (tr) => {
-						docJustChanged = tr.docChanged;
-						return tr.docChanged;
+						// `preventUpdate` is set by setContent({ emitUpdate: false }) — i.e.
+						// loading a note. That is not the user typing '/', so it must not
+						// arm the slash trigger (otherwise opening a note ending in '/'
+						// pops the menu).
+						docJustChanged = tr.docChanged && !tr.getMeta('preventUpdate');
+						return docJustChanged;
 					},
 				},
 			}),
 			Suggestion({
 				editor: this.editor,
 				...this.options.suggestion,
-				allow: () => docJustChanged,
+				allow: ({ state, range }) => {
+					if (!docJustChanged) return false;
+					// Never trigger inside inline code: a '/' there is literal text
+					// (e.g. the `/` documented in the Home note), not a command.
+					// Without this, opening such a note pops the menu because
+					// setContent counts as a doc change.
+					const codeMark = state.schema.marks.code;
+					const node = codeMark ? state.doc.nodeAt(range.from) : null;
+					if (node && codeMark.isInSet(node.marks)) return false;
+					return true;
+				},
 			}),
 		];
 	},
