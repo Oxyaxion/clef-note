@@ -4,10 +4,10 @@ import Suggestion, {
 	type SuggestionKeyDownProps,
 } from '@tiptap/suggestion';
 import { PluginKey } from '@tiptap/pm/state';
-import tippy, { type Instance as TippyInstance } from 'tippy.js';
 import type { Editor, Range } from '@tiptap/core';
 import { escapeHtml } from './utils';
 import { buildSuggestionMenu } from './suggestionMenu';
+import { createSuggestionPopup, type SuggestionPopup } from './suggestionPopup';
 
 const WikiLinkSuggestionKey = new PluginKey('wikiLinkSuggestion');
 
@@ -93,7 +93,7 @@ export function createWikiLinkSuggestion(
 					},
 
 					render: () => {
-						let popup: TippyInstance[];
+						let popup: SuggestionPopup;
 						let menu: ReturnType<typeof buildSuggestionMenu<WikiItem>>;
 						let editorRef: Editor;
 						let rangeRef: Range;
@@ -109,26 +109,17 @@ export function createWikiLinkSuggestion(
 								menu = buildSuggestionMenu(renderWikiItem, doInsert, 'No notes found');
 								menu.update(props.items);
 
-								popup = tippy('body', {
-									getReferenceClientRect: () =>
-										props.clientRect?.() ?? new DOMRect(0, 0, 0, 0),
-									appendTo: () => document.body,
-									content: menu.el,
-									showOnCreate: true,
-									interactive: true,
-									trigger: 'manual',
-									placement: 'bottom-start',
-								});
+								popup = createSuggestionPopup(
+									menu.el,
+									() => props.clientRect?.() ?? new DOMRect(0, 0, 0, 0),
+								);
 							},
 
 							onUpdate(props: SuggestionProps<WikiItem>) {
 								editorRef = props.editor;
 								rangeRef = props.range;
 								menu.update(props.items);
-								popup?.[0]?.setProps({
-									getReferenceClientRect: () =>
-										props.clientRect?.() ?? new DOMRect(0, 0, 0, 0),
-								});
+								popup?.setRect(() => props.clientRect?.() ?? new DOMRect(0, 0, 0, 0));
 							},
 
 							onKeyDown({ event }: SuggestionKeyDownProps): boolean {
@@ -139,14 +130,12 @@ export function createWikiLinkSuggestion(
 									if (item) doInsert(item);
 									return true;
 								}
-								if (event.key === 'Escape') { popup?.[0]?.hide(); return true; }
+								if (event.key === 'Escape') { popup?.hide(); return true; }
 								return false;
 							},
 
 							onExit() {
-								if (popup?.[0] && !popup[0].state.isDestroyed) {
-									popup[0].destroy();
-								}
+								popup?.destroy();
 							},
 						};
 					},

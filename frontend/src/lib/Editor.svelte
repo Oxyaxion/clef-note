@@ -505,4 +505,27 @@
 	:global(.slash-menu-title) { font-size: 0.88rem; font-weight: 500; line-height: 1.3; }
 	:global(.slash-menu-desc)  { font-size: 0.76rem; color: var(--muted, #6b7280); line-height: 1.3; }
 	:global(.slash-menu-empty) { padding: 0.75rem 1rem; font-size: 0.85rem; color: var(--muted, #6b7280); }
+
+	/* Mobile: menu docked above the on-screen keyboard (full width).
+	   `bottom` and `max-height` are set inline from the visualViewport. */
+	:global(.slash-menu--docked) {
+		position: fixed;
+		left: 0;
+		right: 0;
+		width: 100%;
+		min-width: 0;
+		max-height: 50vh;
+		border-radius: 14px 14px 0 0;
+		border-left: none;
+		border-right: none;
+		border-bottom: none;
+		box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.18);
+		padding-bottom: calc(6px + env(safe-area-inset-bottom, 0));
+		z-index: 250;
+	}
+
+	@media (max-width: 640px) {
+		/* Larger tap targets on the docked menu */
+		:global(.slash-menu--docked .slash-menu-item) { padding: 0.65rem 0.7rem; }
+	}
 </style>

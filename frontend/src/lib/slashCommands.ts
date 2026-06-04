@@ -4,10 +4,10 @@ import Suggestion, {
 	type SuggestionKeyDownProps,
 } from '@tiptap/suggestion';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
-import tippy, { type Instance as TippyInstance } from 'tippy.js';
 import type { Editor, Range } from '@tiptap/core';
 import { ALL_ITEMS, type CommandItem } from './slashCommandItems';
 import { buildSuggestionMenu } from './suggestionMenu';
+import { createSuggestionPopup, type SuggestionPopup } from './suggestionPopup';
 
 export { setDateFormat } from './dateFormat.svelte';
 export { ALL_ITEMS, type CommandItem } from './slashCommandItems';
@@ -62,7 +62,7 @@ export const SlashCommand = Extension.create({
 				},
 
 				render: () => {
-					let popup: TippyInstance[];
+					let popup: SuggestionPopup;
 					let menu: ReturnType<typeof buildSuggestionMenu<CommandItem>>;
 					let editorRef: Editor;
 					let rangeRef: Range;
@@ -79,26 +79,17 @@ export const SlashCommand = Extension.create({
 							);
 							menu.update(props.items);
 
-							popup = tippy('body', {
-								getReferenceClientRect: () =>
-									props.clientRect?.() ?? new DOMRect(0, 0, 0, 0),
-								appendTo: () => document.body,
-								content: menu.el,
-								showOnCreate: true,
-								interactive: true,
-								trigger: 'manual',
-								placement: 'bottom-start',
-							});
+							popup = createSuggestionPopup(
+								menu.el,
+								() => props.clientRect?.() ?? new DOMRect(0, 0, 0, 0),
+							);
 						},
 
 						onUpdate(props: SuggestionProps<CommandItem>) {
 							editorRef = props.editor;
 							rangeRef = props.range;
 							menu.update(props.items);
-							popup?.[0]?.setProps({
-								getReferenceClientRect: () =>
-									props.clientRect?.() ?? new DOMRect(0, 0, 0, 0),
-							});
+							popup?.setRect(() => props.clientRect?.() ?? new DOMRect(0, 0, 0, 0));
 						},
 
 						onKeyDown({ event }: SuggestionKeyDownProps): boolean {
@@ -109,12 +100,12 @@ export const SlashCommand = Extension.create({
 								if (item) item.command({ editor: editorRef, range: rangeRef });
 								return true;
 							}
-							if (event.key === 'Escape') { popup?.[0]?.hide(); return true; }
+							if (event.key === 'Escape') { popup?.hide(); return true; }
 							return false;
 						},
 
 						onExit() {
-							popup?.[0]?.destroy();
+							popup?.destroy();
 						},
 					};
 				},
