@@ -11,6 +11,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::{db::NoteMeta, AppState};
 
+/// Map an error to 500 while logging it — the real cause was previously
+/// discarded by `.map_err(|_| INTERNAL_SERVER_ERROR)`.
+fn to_500<E: std::fmt::Display>(e: E) -> StatusCode {
+    tracing::error!("internal error: {e}");
+    StatusCode::INTERNAL_SERVER_ERROR
+}
+
 #[derive(Serialize)]
 pub struct NoteContent {
     pub name: String,
@@ -51,7 +58,7 @@ pub async fn list_notes(
     let db = state.db.clone();
     let mut notes: Vec<NoteMeta> = tokio::task::spawn_blocking(move || db.list_all_meta())
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(to_500)?;
 
     // Stable alphabetical sort first, then stable pinned-first
     notes.sort_by(|a, b| a.name.cmp(&b.name));
@@ -60,7 +67,7 @@ pub async fn list_notes(
     Ok(Json(notes))
 }
 
-fn is_safe_note_name(name: &str) -> bool {
+pub(crate) fn is_safe_note_name(name: &str) -> bool {
     !name.is_empty()
         && !name.contains('\\')
         // Disallow `.`, `..`, and hidden segments (starting with `.`) to prevent
@@ -113,12 +120,12 @@ pub async fn put_note(
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent)
             .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            .map_err(to_500)?;
     }
     let content = crate::frontmatter::stamp_last_modified(&body.content);
     tokio::fs::write(&path, &content)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(to_500)?;
 
     // Update in-memory index (use mtime of the just-written file)
     let mtime = tokio::fs::metadata(&path)
@@ -131,9 +138,9 @@ pub async fn put_note(
     let parsed = crate::frontmatter::parse_note(&content);
     let db = state.db.clone();
     let name_for_db = name.clone();
-    tokio::task::spawn_blocking(move || db.upsert(&name_for_db, &parsed, mtime))
-        .await
-        .ok();
+    if let Err(e) = tokio::task::spawn_blocking(move || db.upsert(&name_for_db, &parsed, mtime)).await {
+        tracing::error!("db.upsert task failed for {name}: {e}");
+    }
 
     // Incremental backlink update — no filesystem walk needed
     state.backlink_index.write().await.update_note(&name, &content);
@@ -170,33 +177,36 @@ pub async fn rename_note(
     if let Some(parent) = new_path.parent() {
         tokio::fs::create_dir_all(parent)
             .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            .map_err(to_500)?;
     }
 
     tokio::fs::rename(&old_path, &new_path)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(to_500)?;
 
     let db = state.db.clone();
-    tokio::task::spawn_blocking({
+    if let Err(e) = tokio::task::spawn_blocking({
         let name = name.clone();
         let new_name = new_name.clone();
         move || db.rename(&name, &new_name)
     })
     .await
-    .ok();
+    {
+        tracing::error!("db.rename task failed for {name} → {new_name}: {e}");
+    }
 
-    // Rewrite [[old_name]] wiki links in all other notes
+    // Rewrite [[old_name]] links AND rebuild the backlink index in one vault pass.
     let storage = state.storage_path.clone();
     let db_wl = state.db.clone();
-    tokio::task::spawn_blocking({
+    let new_index = tokio::task::spawn_blocking({
         let storage = storage.clone();
-        move || update_wiki_links_in_notes(&storage, &name, &new_name, &db_wl)
+        let name = name.clone();
+        let new_name = new_name.clone();
+        move || rename_links_and_reindex(&storage, &name, &new_name, &db_wl)
     })
     .await
-    .ok();
+    .unwrap_or_default();
 
-    let new_index = crate::backlinks::BacklinkIndex::build(&storage).await;
     *state.backlink_index.write().await = new_index;
 
     Ok(StatusCode::NO_CONTENT)
@@ -215,13 +225,13 @@ pub async fn delete_note(
     }
     tokio::fs::remove_file(&path)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(to_500)?;
 
     let db = state.db.clone();
     let name_for_db = name.clone();
-    tokio::task::spawn_blocking(move || db.delete(&name_for_db))
-        .await
-        .ok();
+    if let Err(e) = tokio::task::spawn_blocking(move || db.delete(&name_for_db)).await {
+        tracing::error!("db.delete task failed for {name}: {e}");
+    }
 
     state.backlink_index.write().await.remove_note(&name);
 
@@ -239,7 +249,7 @@ pub async fn upload_asset(
         let dest = state.storage_path.join(".assets").join(&safe_name);
         tokio::fs::write(&dest, &data)
             .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+            .map_err(to_500)?;
         Ok(Json(AssetResponse {
             url: format!("/assets/{safe_name}"),
         }))
@@ -307,15 +317,19 @@ pub async fn delete_asset(
 
 /// After renaming a note, rewrite all `[[old_name]]` / `[[old_name|alias]]`
 /// occurrences in every other note to `[[new_name]]` / `[[new_name|alias]]`.
-fn update_wiki_links_in_notes(
+/// After renaming, rewrite `[[old_name]]` links in every note AND rebuild the
+/// backlink index in the SAME filesystem pass (previously the vault was walked
+/// twice: once here, once in `BacklinkIndex::build`). Returns the fresh index.
+fn rename_links_and_reindex(
     notes_dir: &std::path::Path,
     old_name: &str,
     new_name: &str,
     db: &crate::db::Db,
-) {
+) -> crate::backlinks::BacklinkIndex {
     let escaped = regex::escape(old_name);
     // Matches [[old_name]] and [[old_name|anything]]
-    let Ok(re) = Regex::new(&format!(r"\[\[{}(\|[^\]]*)?]]", escaped)) else { return };
+    let re = Regex::new(&format!(r"\[\[{}(\|[^\]]*)?]]", escaped)).ok();
+    let mut index = crate::backlinks::BacklinkIndex::default();
 
     for entry in walkdir::WalkDir::new(notes_dir)
         .into_iter()
@@ -327,28 +341,32 @@ fn update_wiki_links_in_notes(
             continue;
         }
         let Ok(content) = std::fs::read_to_string(path) else { continue };
+        let Ok(rel) = path.strip_prefix(notes_dir) else { continue };
+        let note_name = rel.with_extension("").to_string_lossy().replace('\\', "/");
 
-        // Skip files that can't possibly contain the link (fast path)
-        if !content.contains(&format!("[[{}", old_name)) {
-            continue;
-        }
+        // Rewrite links if this note references the old name (fast-path guard).
+        let final_content = match &re {
+            Some(re) if content.contains(&format!("[[{}", old_name)) => {
+                let updated = re.replace_all(&content, |caps: &regex::Captures| {
+                    let alias = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+                    format!("[[{}{}]]", new_name, alias)
+                }).into_owned();
+                if updated != content && std::fs::write(path, &updated).is_ok() {
+                    let parsed = crate::frontmatter::parse_note(&updated);
+                    db.upsert(&note_name, &parsed, read_mtime(path));
+                    updated
+                } else {
+                    content
+                }
+            }
+            _ => content,
+        };
 
-        let updated = re.replace_all(&content, |caps: &regex::Captures| {
-            let alias = caps.get(1).map(|m| m.as_str()).unwrap_or("");
-            format!("[[{}{}]]", new_name, alias)
-        }).into_owned();
-
-        if updated == content {
-            continue;
-        }
-
-        if std::fs::write(path, &updated).is_ok() {
-            let Ok(rel) = path.strip_prefix(notes_dir) else { continue };
-            let note_name = rel.with_extension("").to_string_lossy().replace('\\', "/");
-            let parsed = crate::frontmatter::parse_note(&updated);
-            db.upsert(&note_name, &parsed, read_mtime(path));
-        }
+        // (Re)build this note's backlink entry from its final on-disk content.
+        index.update_note(&note_name, &final_content);
     }
+
+    index
 }
 
 fn sanitize_filename(name: &str) -> String {

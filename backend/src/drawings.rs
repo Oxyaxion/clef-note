@@ -7,6 +7,7 @@ use axum::{
 };
 
 use crate::AppState;
+use crate::notes::is_safe_note_name;
 
 fn drawing_path(state: &AppState, name: &str) -> std::path::PathBuf {
     state.storage_path.join(".drawings").join(format!("{name}.excalidraw"))
@@ -44,6 +45,9 @@ pub async fn get_drawing(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
+    if !is_safe_note_name(&name) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
     let path = drawing_path(&state, &name);
     let content = tokio::fs::read(&path).await.map_err(|_| StatusCode::NOT_FOUND)?;
     Ok(([(header::CONTENT_TYPE, "application/json")], content).into_response())
@@ -54,6 +58,9 @@ pub async fn put_drawing(
     Path(name): Path<String>,
     body: axum::body::Bytes,
 ) -> Result<StatusCode, StatusCode> {
+    if !is_safe_note_name(&name) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
     let path = drawing_path(&state, &name);
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -66,6 +73,9 @@ pub async fn delete_drawing(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> StatusCode {
+    if !is_safe_note_name(&name) {
+        return StatusCode::BAD_REQUEST;
+    }
     let _ = tokio::fs::remove_file(drawing_path(&state, &name)).await;
     let _ = tokio::fs::remove_file(preview_path(&state, &name)).await;
     StatusCode::NO_CONTENT
@@ -75,6 +85,9 @@ pub async fn get_preview(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
+    if !is_safe_note_name(&name) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
     let path = preview_path(&state, &name);
     let content = tokio::fs::read(&path).await.map_err(|_| StatusCode::NOT_FOUND)?;
     Ok(([(header::CONTENT_TYPE, "image/svg+xml")], content).into_response())
@@ -85,6 +98,9 @@ pub async fn put_preview(
     Path(name): Path<String>,
     body: axum::body::Bytes,
 ) -> Result<StatusCode, StatusCode> {
+    if !is_safe_note_name(&name) {
+        return Err(StatusCode::BAD_REQUEST);
+    }
     let path = preview_path(&state, &name);
     tokio::fs::write(&path, body).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(StatusCode::NO_CONTENT)
