@@ -25,6 +25,7 @@
 	import { applySettings, DEFAULT, type AppSettings } from '$lib/settings';
 	import { setDateFormat } from '$lib/slashCommands';
 	import { emit, on } from '$lib/events';
+	import { isAbortError } from '$lib/utils';
 	import { createNavigation } from '$lib/navigation.svelte';
 	import { createAutoSave } from '$lib/autoSave.svelte';
 
@@ -132,7 +133,7 @@
 	});
 
 	async function selectNote(name: string, pushHistory = true) {
-		autoSave.cancel();
+		autoSave.flush();
 		renaming = false;
 		loadCtrl?.abort();
 		loadCtrl = new AbortController();
@@ -146,7 +147,7 @@
 			metaPageOpen = false;
 			if (pushHistory) nav.push(name);
 		} catch (e) {
-			if (e instanceof DOMException && e.name === 'AbortError') return;
+			if (isAbortError(e)) return;
 			loadError = `Could not load "${name}". The note may have been deleted or the server is unreachable.`;
 		}
 	}
@@ -213,6 +214,7 @@
 			message: `Delete "${name}"? This action cannot be undone.`,
 			onConfirm: async () => {
 				confirmDialog = null;
+				autoSave.cancel();   // drop any pending edit so we don't resurrect the note
 				selected = null;
 				noteContent = '';
 				noteFrontmatter = {};
