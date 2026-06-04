@@ -1,6 +1,7 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
 import { getDrawing, saveDrawing, getDrawingPreview, saveDrawingPreview, deleteDrawing, type ExcalidrawData } from './api';
+import { isAbortError } from './utils';
 
 // ── Lazy Excalidraw loader ─────────────────────────────────────────────────────
 
@@ -166,6 +167,8 @@ export const DrawingBlock = Node.create({
             dom.appendChild(preview);
 
             let previewCtrl: AbortController | null = null;
+            // Detaches in-progress resize-drag listeners from `document`; set while dragging.
+            let endDrag: (() => void) | null = null;
 
             function setPreview(svg: string) {
                 preview.innerHTML = svg;
@@ -183,7 +186,7 @@ export const DrawingBlock = Node.create({
                 getDrawingPreview(n, previewCtrl.signal)
                     .then(setPreview)
                     .catch((e) => {
-                        if (e instanceof DOMException && e.name === 'AbortError') return;
+                        if (isAbortError(e)) return;
                         preview.innerHTML = '<span class="drawing-placeholder">Click Edit to start drawing</span>';
                     });
             }
@@ -210,6 +213,7 @@ export const DrawingBlock = Node.create({
                 const onUp = (ev: MouseEvent) => {
                     document.removeEventListener('mousemove', onMove);
                     document.removeEventListener('mouseup', onUp);
+                    endDrag = null;
                     const newH = Math.max(80, Math.min(1200, startHeight + ev.clientY - startY));
                     const pos = getPos();
                     if (typeof pos === 'number') {
@@ -224,6 +228,12 @@ export const DrawingBlock = Node.create({
 
                 document.addEventListener('mousemove', onMove);
                 document.addEventListener('mouseup', onUp);
+                // Allow destroy() to detach these document-level listeners if the
+                // node view is torn down mid-drag (e.g. note switch).
+                endDrag = () => {
+                    document.removeEventListener('mousemove', onMove);
+                    document.removeEventListener('mouseup', onUp);
+                };
             });
 
             // ── Cursor helpers (same pattern as queryBlock) ────────────────
@@ -236,10 +246,11 @@ export const DrawingBlock = Node.create({
 
             // ── Event handlers ─────────────────────────────────────────────
             editBtn.addEventListener('click', () => {
-                const DARK_THEMES = new Set(['github-dark', 'dracula', 'rose-pine', 'desert']);
-                const theme = document.documentElement.getAttribute('data-theme') ?? '';
-                const isDark = DARK_THEMES.has(theme)
-                    || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
+                // Single source of truth: each theme declares `color-scheme` in CSS.
+                // The default theme leaves it unset ('normal') → fall back to the OS.
+                const cs = getComputedStyle(document.documentElement).colorScheme;
+                const isDark = cs === 'dark'
+                    || (cs !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
                 openDrawingEditor(currentNode.attrs.name, isDark, setPreview, () => {
                     editor.view.focus();
                 });
@@ -270,6 +281,7 @@ export const DrawingBlock = Node.create({
                 },
                 destroy() {
                     previewCtrl?.abort();
+                    endDrag?.();
                 },
             };
         };

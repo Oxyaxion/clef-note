@@ -10,6 +10,7 @@ interface MarkdownSerializerState {
 }
 import { queryNotes, listTags, getFieldValues, type NoteQueryResult, type TagCount } from './api';
 import { on } from './events';
+import { isAbortError } from './utils';
 import {
     getActiveToken, parsePrint, ICON_LOCKED, ICON_UNLOCKED,
     type ActiveToken, type PrintSpec,
@@ -420,7 +421,7 @@ class QueryBlockNodeView {
                 this.renderResults(rows, print);
             }
         } catch (e) {
-            if (e instanceof DOMException && e.name === 'AbortError') return;
+            if (isAbortError(e)) return;
             this.countEl.textContent = '';
             this.results.innerHTML = '<span class="query-empty query-error">Query error</span>';
         } finally {

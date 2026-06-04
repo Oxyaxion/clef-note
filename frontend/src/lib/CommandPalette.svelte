@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { searchContent, queryNotes, listTags, uploadAsset, type NoteMeta, type SearchResult, type NoteQueryResult, type TagCount } from './api';
 	import { THEMES, type ThemeId } from './theme';
-	import { escapeHtml } from './utils';
+	import { escapeHtml, isAbortError } from './utils';
 	import { emit } from './events';
 	import NoteIcon from './NoteIcon.svelte';
 	import {
@@ -219,7 +219,7 @@
 			contentCtrl = ctrl;
 			searchContent(q, ctrl.signal)
 				.then((r) => { contentResults = r; })
-				.catch((e) => { if (!(e instanceof DOMException && e.name === 'AbortError')) contentResults = []; });
+				.catch((e) => { if (!isAbortError(e)) contentResults = []; });
 		}, 300);
 	});
 
@@ -241,7 +241,7 @@
 				dslCtrl = ctrl;
 				listTags(ctrl.signal)
 					.then((r) => { dslTagResults = r; dslResults = []; })
-					.catch((e) => { if (!(e instanceof DOMException && e.name === 'AbortError')) dslTagResults = []; });
+					.catch((e) => { if (!isAbortError(e)) dslTagResults = []; });
 			}, 150);
 			return;
 		}
@@ -257,7 +257,7 @@
 			dslCtrl = ctrl;
 			queryNotes(q, ctrl.signal)
 				.then((r) => { dslResults = r; })
-				.catch((e) => { if (!(e instanceof DOMException && e.name === 'AbortError')) dslResults = []; });
+				.catch((e) => { if (!isAbortError(e)) dslResults = []; });
 		}, 300);
 	});
 

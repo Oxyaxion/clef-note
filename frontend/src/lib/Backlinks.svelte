@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { getBacklinks } from './api';
+	import { isAbortError } from './utils';
 
 	interface Props {
 		note: string;
@@ -17,7 +18,7 @@
 		const ctrl = new AbortController();
 		getBacklinks(n, ctrl.signal)
 			.then((r) => { backlinks = r.backlinks; })
-			.catch((e) => { if (!(e instanceof DOMException && e.name === 'AbortError')) backlinks = []; });
+			.catch((e) => { if (!isAbortError(e)) backlinks = []; });
 		return () => { ctrl.abort(); };
 	});
 

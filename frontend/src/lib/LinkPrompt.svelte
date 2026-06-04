@@ -2,6 +2,7 @@
 	import { tick } from 'svelte';
 	import type { Editor } from '@tiptap/core';
 	import { emit, on } from './events';
+	import { isSafeHref } from './utils';
 
 	interface Props {
 		editor: Editor;
@@ -136,7 +137,7 @@
 			{tooltipHref.length > 40 ? tooltipHref.slice(0, 40) + '…' : tooltipHref}
 		</span>
 		<span class="lt-sep"></span>
-		<button onclick={() => window.open(tooltipHref, '_blank', 'noopener noreferrer')} title="Open">↗</button>
+		<button onclick={() => { if (isSafeHref(tooltipHref)) window.open(tooltipHref, '_blank', 'noopener noreferrer'); }} title="Open">↗</button>
 		<button onmousedown={(e) => { e.preventDefault(); editFromTooltip(); }} title="Edit">Edit</button>
 		<button onmousedown={(e) => { e.preventDefault(); removeFromTooltip(); }} title="Remove" class="lt-remove">×</button>
 	</div>
