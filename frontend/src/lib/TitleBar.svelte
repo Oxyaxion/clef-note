@@ -5,6 +5,7 @@
 		saveFailed: boolean;
 		isLocked: boolean;
 		focusMode: boolean;
+		rawView?: boolean;
 		isMobile: boolean;
 		renaming: boolean;
 		renameValue: string;
@@ -14,6 +15,7 @@
 		onCancelRename: () => void;
 		onToggleLock: () => void;
 		onToggleFocus: () => void;
+		onToggleRaw: () => void;
 		onOpenPalette: () => void;
 	}
 
@@ -23,6 +25,7 @@
 		saveFailed,
 		isLocked,
 		focusMode,
+		rawView = false,
 		isMobile,
 		renaming = $bindable(),
 		renameValue = $bindable(),
@@ -32,6 +35,7 @@
 		onCancelRename,
 		onToggleLock,
 		onToggleFocus,
+		onToggleRaw,
 		onOpenPalette,
 	}: Props = $props();
 
@@ -94,6 +98,19 @@
 					{:else}
 						<path d="M7 3H3v4M13 3h4v4M7 17H3v-4M13 17h4v-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
 					{/if}
+				</svg>
+			</button>
+
+			<button
+				onclick={onToggleRaw}
+				title={rawView ? 'Show formatted view' : 'View markdown source'}
+				class="icon-btn"
+				class:active={rawView}
+				aria-label={rawView ? 'Show formatted view' : 'View markdown source'}
+				aria-pressed={rawView}
+			>
+				<svg width="15" height="15" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+					<path d="M7.5 6.5L4 10l3.5 3.5M12.5 6.5L16 10l-3.5 3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
 				</svg>
 			</button>
 

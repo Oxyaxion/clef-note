@@ -22,18 +22,20 @@
 		notes: NoteMeta[];
 		selected: string | null;
 		noteMarkdown?: string;
+		rawView?: boolean;
 		currentTheme?: ThemeId;
 		onSelect: (name: string) => void;
 		onClose: () => void;
 		onNewNote: () => void;
 		onRename: () => void;
 		onDelete: () => void;
+		onToggleRaw: () => void;
 		onSetTheme: (id: ThemeId) => void;
 		onSettings: () => void;
 		onMediaLibrary: () => void;
 	}
 
-	let { notes, selected, noteMarkdown = '', currentTheme = 'default', onSelect, onClose, onNewNote, onRename, onDelete, onSetTheme, onSettings, onMediaLibrary }: Props = $props();
+	let { notes, selected, noteMarkdown = '', rawView = false, currentTheme = 'default', onSelect, onClose, onNewNote, onRename, onDelete, onToggleRaw, onSetTheme, onSettings, onMediaLibrary }: Props = $props();
 
 	let query = $state('');
 	let selectedIndex = $state(0);
@@ -116,6 +118,12 @@
 				};
 				input.click();
 			},
+		},
+		{
+			id: 'toggle-raw',
+			label: rawView ? 'Hide markdown source' : 'View markdown source',
+			icon: '</>',
+			action: () => { onClose(); onToggleRaw(); },
 		},
 		{
 			id: 'copy-md',

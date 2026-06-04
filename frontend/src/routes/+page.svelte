@@ -48,6 +48,9 @@
 	let sidebarOpen = $state(false);
 	let renaming = $state(false);   // bound to NoteEditorPane
 	let focusMode = $state(false);  // bound to NoteEditorPane
+	let rawView = $state(false);    // raw markdown source view
+	let rawDirty = $state(false);   // a raw edit happened → resync on exit
+	let reloadNonce = $state(0);    // bumped to force the editor to re-sync content
 	let isMobile = $state(false);
 	let creatingFromPalette = $state(false);
 	let currentTheme = $state<ThemeId>('default');
@@ -63,6 +66,9 @@
 
 	const frontmatterMd = $derived(serializeFrontmatter(noteFrontmatter));
 	const noteMarkdown = $derived(frontmatterMd + noteContent);
+	// Key for the editor/frontmatter view. Changes on note switch (selected) and
+	// after a raw edit (reloadNonce) so the rich editor re-syncs from disk.
+	const editorReloadKey = $derived(`${selected}#${reloadNonce}`);
 
 	// Stable reference: only changes when note names actually change, not on every metadata save.
 	let _prevNoteNames: string[] = [];
@@ -135,6 +141,9 @@
 	async function selectNote(name: string, pushHistory = true) {
 		autoSave.flush();
 		renaming = false;
+		// Keep the raw-source view across note switches (user preference); the new
+		// note's pending raw edits start clean and RawSource remounts via reloadKey.
+		rawDirty = false;
 		loadCtrl?.abort();
 		loadCtrl = new AbortController();
 		loadError = null;
@@ -193,6 +202,40 @@
 			}
 		}
 		autoSave.schedule(selected, noteFrontmatter, markdown);
+	}
+
+	function onRawEdit(raw: string) {
+		if (!selected) return;
+		rawDirty = true;
+		autoSave.scheduleRaw(selected, raw);
+	}
+
+	async function toggleRawView() {
+		if (!selected) return;
+		if (!rawView) {
+			rawView = true;
+			return;
+		}
+		// Leaving the source view: persist the pending raw edit, then re-sync the
+		// split frontmatter/body from disk so the rich editor reflects the changes.
+		rawView = false;
+		await autoSave.flush();
+		if (!rawDirty) return;
+		rawDirty = false;
+		const name = selected;
+		try {
+			const note = await getNote(name);
+			noteFrontmatter = (note.frontmatter ?? {}) as Frontmatter;
+			noteContent = note.content;
+			reloadNonce++;
+			// Refresh sidebar metadata (pinned / index / template may have changed).
+			const pinned = noteFrontmatter.pinned === true;
+			const is_index = noteFrontmatter.type === 'index';
+			const is_template = noteFrontmatter.type === 'template';
+			notes = notes.map(n => n.name === name ? { ...n, pinned, is_index, is_template } : n);
+		} catch {
+			loadError = `Could not reload "${name}" after editing the source.`;
+		}
 	}
 
 	function onFrontmatterChange(fm: Frontmatter) {
@@ -281,6 +324,7 @@
 		{notes}
 		{selected}
 		{noteMarkdown}
+		{rawView}
 		{currentTheme}
 		onSelect={selectNote}
 		onClose={() => (paletteOpen = false)}
@@ -290,6 +334,7 @@
 		}}
 		onRename={() => (renaming = true)}
 		onDelete={handleDelete}
+		onToggleRaw={toggleRawView}
 		onSetTheme={(id) => { currentTheme = id; applyTheme(id); }}
 		onSettings={() => (settingsOpen = true)}
 		onMediaLibrary={() => (metaPageOpen = true)}
@@ -341,7 +386,11 @@
 				{isMobile}
 				bind:renaming
 				bind:focusMode
+				{rawView}
+				reloadKey={editorReloadKey}
 				{onEdit}
+				{onRawEdit}
+				onToggleRaw={toggleRawView}
 				{onFrontmatterChange}
 				onNavigate={selectNote}
 				onRenamed={handleRenamed}

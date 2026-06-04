@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import Editor from '$lib/Editor.svelte';
+	import RawSource from '$lib/RawSource.svelte';
 	import Backlinks from '$lib/Backlinks.svelte';
 	import FrontmatterEditor from '$lib/FrontmatterEditor.svelte';
 	import TableOfContents, { type Heading } from '$lib/TableOfContents.svelte';
 	import TitleBar from '$lib/TitleBar.svelte';
-	import { renameNote, type Frontmatter } from '$lib/api';
+	import { renameNote, serializeFrontmatter, type Frontmatter } from '$lib/api';
 	import { emit } from '$lib/events';
 
 	interface Props {
@@ -18,7 +19,12 @@
 		isMobile: boolean;
 		renaming?: boolean;
 		focusMode?: boolean;
+		rawView?: boolean;
+		/** Key that forces the editor/frontmatter to re-sync (bumps after a raw edit). */
+		reloadKey: string;
 		onEdit: (markdown: string) => void;
+		onRawEdit: (raw: string) => void;
+		onToggleRaw: () => void;
 		onFrontmatterChange: (fm: Frontmatter) => void;
 		onNavigate: (name: string) => void;
 		onRenamed: (oldName: string, newName: string) => void;
@@ -35,12 +41,21 @@
 		isMobile,
 		renaming = $bindable(false),
 		focusMode = $bindable(false),
+		rawView = false,
+		reloadKey,
 		onEdit,
+		onRawEdit,
+		onToggleRaw,
 		onFrontmatterChange,
 		onNavigate,
 		onRenamed,
 		onOpenPalette,
 	}: Props = $props();
+
+	// Full markdown source (frontmatter block + body) for the raw view.
+	// Computed only while the raw view is open: otherwise this would re-allocate
+	// the entire note string on every keystroke for nothing.
+	const fullMarkdown = $derived(rawView ? serializeFrontmatter(noteFrontmatter) + noteContent : '');
 
 	let renameValue = $state('');
 	let renameError = $state('');
@@ -48,12 +63,28 @@
 	const isIndex = $derived(noteFrontmatter.type === 'index');
 	const isLocked = $derived(noteFrontmatter.locked === true);
 
-	const headings = $derived<Heading[]>(
-		Array.from(noteContent.matchAll(/^(#{1,6})\s+(.+?)(?:\s+#+\s*)?$/gm)).map((m) => ({
+	function extractHeadings(md: string): Heading[] {
+		return Array.from(md.matchAll(/^(#{1,6})\s+(.+?)(?:\s+#+\s*)?$/gm)).map((m) => ({
 			level: m[1].length,
 			text: m[2].trim(),
-		}))
-	);
+		}));
+	}
+
+	// The heading scan is O(content). Run it immediately on note switch (so the
+	// TOC is correct right away) but debounce it while typing — otherwise every
+	// keystroke re-scans the whole note.
+	let headings = $state<Heading[]>([]);
+
+	$effect(() => {
+		reloadKey; // recompute now on note switch
+		headings = extractHeadings(untrack(() => noteContent));
+	});
+
+	$effect(() => {
+		const md = noteContent; // recompute (debounced) on edits
+		const id = setTimeout(() => { headings = extractHeadings(md); }, 250);
+		return () => clearTimeout(id);
+	});
 
 	const showToc = $derived(headings.length >= 2 && noteFrontmatter.toc !== false);
 
@@ -108,6 +139,7 @@
 	{saveFailed}
 	{isLocked}
 	{focusMode}
+	{rawView}
 	{isMobile}
 	bind:renaming
 	bind:renameValue
@@ -117,25 +149,32 @@
 	onCancelRename={cancelRename}
 	onToggleLock={toggleLock}
 	onToggleFocus={() => (focusMode = !focusMode)}
+	onToggleRaw={onToggleRaw}
 	onOpenPalette={onOpenPalette}
 />
 
-{#if showToc && !focusMode}
-	<TableOfContents {headings} onDisable={disableToc} />
-{/if}
-
-<div class="editor-area" class:focus-mode={focusMode}>
-	{#key selected}
-		<FrontmatterEditor
-			frontmatter={noteFrontmatter}
-			onChange={onFrontmatterChange}
-		/>
+{#if rawView}
+	{#key reloadKey}
+		<RawSource value={fullMarkdown} {isLocked} onInput={onRawEdit} />
 	{/key}
-	<Editor {noteContent} noteKey={selected} {noteNames} {onEdit} {isIndex} {isLocked} />
-</div>
+{:else}
+	{#if showToc && !focusMode}
+		<TableOfContents {headings} onDisable={disableToc} />
+	{/if}
 
-{#if !focusMode}
-	<Backlinks note={selected} onNavigate={onNavigate} />
+	<div class="editor-area" class:focus-mode={focusMode}>
+		{#key reloadKey}
+			<FrontmatterEditor
+				frontmatter={noteFrontmatter}
+				onChange={onFrontmatterChange}
+			/>
+		{/key}
+		<Editor {noteContent} noteKey={reloadKey} {noteNames} {onEdit} {isIndex} {isLocked} />
+	</div>
+
+	{#if !focusMode}
+		<Backlinks note={selected} onNavigate={onNavigate} />
+	{/if}
 {/if}
 
 <style>
