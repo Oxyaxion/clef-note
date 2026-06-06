@@ -406,7 +406,8 @@ class QueryBlockNodeView {
         const cleanQuery = rawQuery.replace(/\*/g, ' ').trim();
         this.currentPrint = print;
 
-        if (!cleanQuery) {
+        const originalEmpty = !q.trim();
+        if (!cleanQuery && originalEmpty) {
             this.countEl.textContent = '';
             this.results.innerHTML = '<span class="query-empty">Type a query above…</span>';
             this.fetchCtrl = null;
