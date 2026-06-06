@@ -6,15 +6,19 @@ Clef Note exposes a REST API on the same port as the web UI (default `:3000`). I
 
 ## Quick start
 
-### 1. Get your API key
+### 1. Set up your API key
 
-Open the app → `Ctrl+K` → **Settings** → **Security** → copy the API key.
-
-Or via the CLI once authenticated:
+The API key is defined in `clef-note.toml`. Generate one and add it:
 
 ```bash
-curl -s http://localhost:3000/api/key -H "Authorization: Bearer <key>"
+# Generate a key
+openssl rand -hex 32
+
+# Add it to clef-note.toml
+# api_key = "the_generated_value"
 ```
+
+Then restart the backend. The key will appear in **Settings → Security** where you can reveal and copy it.
 
 ### 2. Configure your environment
 

@@ -36,7 +36,7 @@
 		<div class="key-block">
 			<div class="key-label">
 				<span>API key</span>
-				<span class="key-hint">CLI · REST · OpenAPI (<code>AN_KEY</code>)</span>
+				<span class="key-hint">CLI · REST · OpenAPI (<code>CN_KEY</code>)</span>
 			</div>
 			{#if apiKey}
 				<div class="key-row">
