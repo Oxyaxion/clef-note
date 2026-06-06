@@ -208,6 +208,18 @@ export async function getMediaUsage(): Promise<MediaUsage> {
     return res.json();
 }
 
+export interface NoteStub {
+    name: string;
+    title: string | null;
+    body_len: number;
+}
+
+export async function listStubs(maxBytes = 500): Promise<NoteStub[]> {
+    const res = await apiFetch(`${BASE}/api/notes/stubs?max_bytes=${maxBytes}`, { headers: authHeaders() });
+    if (!res.ok) throw new Error('Failed to fetch stubs');
+    return res.json();
+}
+
 // ── Drawings ──────────────────────────────────────────────────────────────────
 
 export interface ExcalidrawData {

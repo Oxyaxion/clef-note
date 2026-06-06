@@ -9,7 +9,8 @@ use axum::{
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use crate::{db::NoteMeta, AppState};
+use axum::extract::Query as AxumQuery;
+use crate::{db::{NoteMeta, NoteStub}, AppState};
 
 /// Map an error to 500 while logging it — the real cause was previously
 /// discarded by `.map_err(|_| INTERNAL_SERVER_ERROR)`.
@@ -36,6 +37,20 @@ pub struct PutNoteBody {
 pub struct MediaUsage {
     pub used_assets: Vec<String>,
     pub used_drawings: Vec<String>,
+}
+
+#[derive(Deserialize)]
+pub struct StubsQuery {
+    #[serde(default = "default_max_bytes")]
+    pub max_bytes: usize,
+}
+fn default_max_bytes() -> usize { 500 }
+
+pub async fn list_stubs(
+    State(state): State<Arc<AppState>>,
+    AxumQuery(params): AxumQuery<StubsQuery>,
+) -> Json<Vec<NoteStub>> {
+    Json(state.db.stubs(params.max_bytes))
 }
 
 pub async fn get_media_usage(State(state): State<Arc<AppState>>) -> Json<MediaUsage> {

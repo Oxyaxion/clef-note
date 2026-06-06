@@ -401,7 +401,7 @@
 
 	<main class="main">
 		{#if metaPageOpen}
-			<MetaPage onClose={() => (metaPageOpen = false)} />
+			<MetaPage onClose={() => (metaPageOpen = false)} onNavigate={selectNote} />
 		{:else if selected}
 			<NoteEditorPane
 				{selected}

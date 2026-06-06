@@ -4,19 +4,21 @@
 		listAssets, deleteAsset,
 		listDrawings, deleteDrawing,
 		getDrawingPreview, getMediaUsage,
-		listShares,
-		type AssetMeta, type ShareMeta,
+		listShares, listStubs,
+		type AssetMeta, type ShareMeta, type NoteStub,
 	} from './api';
 	import MediaAssets from './MediaAssets.svelte';
 	import MediaDrawings from './MediaDrawings.svelte';
 	import MediaShares from './MediaShares.svelte';
+	import MediaStubs from './MediaStubs.svelte';
 
 	const BASE = import.meta.env.VITE_API_BASE ?? '';
 
 	interface Props {
 		onClose: () => void;
+		onNavigate: (name: string) => void;
 	}
-	let { onClose }: Props = $props();
+	let { onClose, onNavigate }: Props = $props();
 
 	type Preview =
 		| { kind: 'image'; asset: AssetMeta }
@@ -26,29 +28,37 @@
 	let drawings = $state<string[]>([]);
 	let drawingPreviews = $state<Record<string, string>>({});
 	let loading = $state(true);
-	let activeTab = $state<'images' | 'drawings' | 'shares'>('images');
+	let activeTab = $state<'images' | 'drawings' | 'shares' | 'stubs'>('images');
 	let preview = $state<Preview | null>(null);
 	let usedAssets = $state<Set<string> | null>(null);
 	let usedDrawings = $state<Set<string> | null>(null);
 	let filter = $state<'all' | 'used' | 'orphaned'>('all');
 	let shares = $state<ShareMeta[]>([]);
+	let stubs = $state<NoteStub[]>([]);
+	let stubsMaxBytes = $state(500);
 
 	onMount(async () => {
 		await reload();
 	});
 
+	async function reloadStubs() {
+		stubs = await listStubs(stubsMaxBytes).catch(() => []);
+	}
+
 	async function reload() {
 		loading = true;
 		try {
-			const [assetList, drawingList, usage, shareList] = await Promise.all([
+			const [assetList, drawingList, usage, shareList, stubList] = await Promise.all([
 				listAssets(),
 				listDrawings(),
 				getMediaUsage().catch(() => null),
 				listShares().catch(() => [] as ShareMeta[]),
+				listStubs(stubsMaxBytes).catch(() => [] as NoteStub[]),
 			]);
 			assets = assetList;
 			drawings = drawingList;
 			shares = shareList;
+			stubs = stubList;
 			if (usage) {
 				usedAssets = new Set(usage.used_assets);
 				usedDrawings = new Set(usage.used_drawings);
@@ -128,8 +138,11 @@
 				<button class="tab" class:active={activeTab === 'shares'} onclick={() => (activeTab = 'shares')}>
 					Shares <span class="count">{shares.length}</span>
 				</button>
+				<button class="tab" class:active={activeTab === 'stubs'} onclick={() => (activeTab = 'stubs')}>
+					Stubs <span class="count">{stubs.length}</span>
+				</button>
 			</div>
-			{#if usedAssets !== null && activeTab !== 'shares'}
+			{#if usedAssets !== null && activeTab !== 'shares' && activeTab !== 'stubs'}
 				<div class="filter-pills">
 					<button class="pill" class:active={filter === 'all'} onclick={() => (filter = 'all')}>All</button>
 					<button class="pill" class:active={filter === 'used'} onclick={() => (filter = 'used')}>Used</button>
@@ -164,6 +177,13 @@
 			<MediaShares
 				{shares}
 				onChanged={reload}
+			/>
+		{:else if activeTab === 'stubs'}
+			<MediaStubs
+				{stubs}
+				maxBytes={stubsMaxBytes}
+				onMaxBytesChange={async (v) => { stubsMaxBytes = v; await reloadStubs(); }}
+				onNavigate={(name) => { onClose(); onNavigate(name); }}
 			/>
 		{/if}
 	</div>

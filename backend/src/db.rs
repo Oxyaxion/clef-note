@@ -50,6 +50,13 @@ pub struct TagCount {
     pub count: usize,
 }
 
+#[derive(Debug, Serialize, Clone)]
+pub struct NoteStub {
+    pub name: String,
+    pub title: Option<String>,
+    pub body_len: usize,
+}
+
 // ── Internal storage ──────────────────────────────────────────────────────────
 
 struct StoredNote {
@@ -214,6 +221,22 @@ impl Db {
             }
         }
         (used_assets, used_drawings)
+    }
+
+    /// Returns notes whose body length (bytes) is <= `max_bytes`, sorted by body length ascending.
+    pub fn stubs(&self, max_bytes: usize) -> Vec<NoteStub> {
+        let index = self.0.read().unwrap();
+        let mut result: Vec<NoteStub> = index
+            .values()
+            .filter(|n| n.body.len() <= max_bytes)
+            .map(|n| NoteStub {
+                name: n.row.name.clone(),
+                title: n.row.title.clone(),
+                body_len: n.body.len(),
+            })
+            .collect();
+        result.sort_by(|a, b| a.body_len.cmp(&b.body_len).then(a.name.cmp(&b.name)));
+        result
     }
 
     pub fn query_notes(&self, q: &str) -> Vec<NoteRow> {

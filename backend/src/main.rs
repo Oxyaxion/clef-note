@@ -215,6 +215,7 @@ async fn run_server(state: Arc<AppState>, port: u16) {
         .route("/api/tags", get(query::handle_tags))
         .route("/api/aliases", get(query::handle_aliases))
         .route("/api/field-values", get(query::handle_field_values))
+        .route("/api/notes/stubs", get(notes::list_stubs))
         .route("/api/media-usage", get(notes::get_media_usage))
         .route("/api/key", get(key::get_keys))
         .route("/api/settings", get(settings::get_settings).put(settings::put_settings))
