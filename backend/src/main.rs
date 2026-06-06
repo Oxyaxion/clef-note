@@ -20,7 +20,7 @@ use std::sync::Arc;
 
 use axum::{
     Json, Router, extract::State, http::StatusCode, middleware,
-    routing::{delete, get, patch, post},
+    routing::{delete, get, post},
 };
 use tower_http::cors::{Any, CorsLayer};
 
