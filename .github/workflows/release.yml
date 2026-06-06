@@ -25,6 +25,7 @@ jobs:
         working-directory: frontend
         env:
           VITE_API_BASE: ''
+          APP_VERSION: ${{ github.ref_name }}
         run: npm ci && npm run build
 
       - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8  # stable
@@ -36,6 +37,13 @@ jobs:
             ~/.cargo/git
             backend/target
           key: linux-cargo-${{ hashFiles('backend/Cargo.lock') }}
+
+      - name: Set version in Cargo.toml
+        working-directory: backend
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          sed -i "s/^version = \"[^\"]*\"/version = \"$VERSION\"/" Cargo.toml
 
       - name: Build backend
         working-directory: backend
@@ -63,9 +71,12 @@ jobs:
           usesh: true
           prepare: pkg install -y rust node npm
           run: |
+            VERSION="${{ github.ref_name }}"
+            VERSION="${VERSION#v}"
+            sed -i '' "s/^version = \"[^\"]*\"/version = \"$VERSION\"/" backend/Cargo.toml
             cd frontend
             npm ci
-            VITE_API_BASE='' npm run build
+            VITE_API_BASE='' APP_VERSION="${{ github.ref_name }}" npm run build
             cd ../backend
             cargo build --release
 

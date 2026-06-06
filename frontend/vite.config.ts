@@ -4,6 +4,7 @@ import { execSync } from 'child_process';
 
 export default defineConfig(({ command }) => {
 	const gitVersion = (() => {
+		if (process.env.APP_VERSION) return process.env.APP_VERSION;
 		try {
 			return execSync('git describe --tags', { encoding: 'utf-8' }).trim();
 		} catch {

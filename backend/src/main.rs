@@ -41,6 +41,11 @@ pub struct AppState {
 async fn main() {
     let args: Vec<String> = std::env::args().collect();
 
+    if args.iter().any(|a| a == "--version" || a == "-V") {
+        println!("clef-note {}", env!("CARGO_PKG_VERSION"));
+        return;
+    }
+
     // --hash-password <plaintext> → print Argon2 hash and exit
     if let Some(i) = args.iter().position(|a| a == "--hash-password") {
         match args.get(i + 1) {
