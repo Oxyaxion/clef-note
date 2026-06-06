@@ -232,9 +232,12 @@ pub async fn get_shared(
         return StatusCode::NOT_FOUND.into_response();
     };
 
-    // Expired?
+    // Expired? Delete from store and return 410.
     if let Some(exp) = share.expires_at {
         if Utc::now() > exp {
+            let mut shares = shares;
+            shares.remove(&slug);
+            save_shares(&state, &shares).await;
             return StatusCode::GONE.into_response();
         }
     }
