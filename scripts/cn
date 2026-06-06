@@ -1,0 +1,178 @@
+#!/usr/bin/env bash
+# cn — Clef Note CLI
+# Commands: ls, get, put, rm, mv, query, search, shares, key
+# Config:   CN_URL (default: http://localhost:3000)
+#           CN_KEY or CLEF_NOTE_KEY
+
+set -euo pipefail
+
+CN_URL="${CN_URL:-${AN_URL:-${CLEF_NOTE_URL:-http://localhost:3000}}}"
+CN_KEY="${CN_KEY:-${AN_KEY:-${CLEF_NOTE_KEY:-}}}"
+
+auth_args=()
+[[ -n "$CN_KEY" ]] && auth_args+=(-H "Authorization: Bearer $CN_KEY")
+
+BOLD=$'\e[1m'
+DIM=$'\e[2m'
+RESET=$'\e[0m'
+
+urlencode() {
+    printf '%s' "$1" | jq -Rr 'split("/") | map(@uri) | join("/")'
+}
+
+cmd="${1:-help}"
+shift 2>/dev/null || true
+
+case "$cmd" in
+
+  ls|list)
+    result=$(curl -sf "${auth_args[@]}" "$CN_URL/notes")
+    echo "$result" | jq -r '.[] | (if .pinned then "★" else " " end) + " " + .name'
+    echo ""
+    echo "$result" | jq -r '(length|tostring) + " notes"'
+    ;;
+
+  get|cat|read)
+    [[ -z "${1:-}" ]] && { echo "Usage: cn get <name>"; exit 1; }
+    name="$(urlencode "$1")"
+    curl -sf "${auth_args[@]}" "$CN_URL/notes/$name" | jq -r '.content // ""'
+    ;;
+
+  put|write|save)
+    [[ -z "${1:-}" ]] && { echo "Usage: cn put <name> < file.md"; exit 1; }
+    name="$(urlencode "$1")"
+    content="$(cat)"
+    payload=$(jq -Rn --arg c "$content" '{"content": $c}')
+    curl -sf -X PUT "${auth_args[@]}" \
+      -H "Content-Type: application/json" \
+      -d "$payload" \
+      "$CN_URL/notes/$name"
+    echo "Saved: $1"
+    ;;
+
+  rm|delete|del)
+    [[ -z "${1:-}" ]] && { echo "Usage: cn rm <name>"; exit 1; }
+    name="$(urlencode "$1")"
+    curl -sf -X DELETE "${auth_args[@]}" "$CN_URL/notes/$name"
+    echo "Deleted: $1"
+    ;;
+
+  mv|rename)
+    [[ -z "${1:-}" || -z "${2:-}" ]] && { echo "Usage: cn mv <old-name> <new-name>"; exit 1; }
+    old="$(urlencode "$1")"
+    payload=$(jq -Rn --arg n "$2" '{"new_name": $n}')
+    curl -sf -X PATCH "${auth_args[@]}" \
+      -H "Content-Type: application/json" \
+      -d "$payload" \
+      "$CN_URL/notes/$old"
+    echo "Renamed: $1 → $2"
+    ;;
+
+  query|q)
+    [[ -z "${1:-}" ]] && { echo "Usage: cn query '<DSL>'"; exit 1; }
+    q="$(printf '%s' "$1" | jq -Rr @uri)"
+    result=$(curl -sf "${auth_args[@]}" "$CN_URL/api/query?q=$q")
+    echo "$result" | jq -r --arg dim "$DIM" --arg reset "$RESET" '
+      .[] |
+      (.title // .name) as $title |
+      ( [ (.tags // [] | join(", ")),
+          (.status // ""),
+          (.date   // ""),
+          (.area   // "") ]
+        | map(select(. != ""))
+        | join(" · ") ) as $meta |
+      $title,
+      if $meta != "" then "  " + $dim + $meta + $reset else empty end
+    '
+    echo ""
+    echo "$result" | jq -r --arg dim "$DIM" --arg reset "$RESET" \
+      '"" + $dim + (length|tostring) + " result(s)" + $reset'
+    ;;
+
+  search|s)
+    [[ -z "${1:-}" ]] && { echo "Usage: cn search '<text>'"; exit 1; }
+    q="$(printf '%s' "$1" | jq -Rr @uri)"
+    result=$(curl -sf "${auth_args[@]}" "$CN_URL/api/search?q=$q")
+    echo "$result" | jq -r --arg bold "$BOLD" --arg dim "$DIM" --arg reset "$RESET" '
+      .[] |
+      $bold + (.title // .name) + $reset,
+      "  " + (.snippet // ""),
+      ""
+    '
+    echo "$result" | jq -r --arg dim "$DIM" --arg reset "$RESET" \
+      '$dim + (length|tostring) + " result(s)" + $reset'
+    ;;
+
+  shares|share)
+    subcmd="${1:-ls}"
+    shift 2>/dev/null || true
+    case "$subcmd" in
+      ls|list)
+        result=$(curl -sf "${auth_args[@]}" "$CN_URL/api/shares")
+        echo "$result" | jq -r --arg dim "$DIM" --arg reset "$RESET" '
+          .[] |
+          (.slug) as $slug |
+          (.note) as $note |
+          (if .has_password then " 🔒" else "" end) as $pw |
+          (if .expires_at then " (expires " + (.expires_at | split("T")[0]) + ")" else "" end) as $exp |
+          $note + $pw + $exp + $dim + "  /shared/" + $slug + $reset
+        '
+        echo ""
+        echo "$result" | jq -r '(length|tostring) + " share(s)"'
+        ;;
+      rm|delete|del)
+        [[ -z "${1:-}" ]] && { echo "Usage: cn shares rm <slug>"; exit 1; }
+        curl -sf -X DELETE "${auth_args[@]}" "$CN_URL/api/shares/$1"
+        echo "Deleted share: $1"
+        ;;
+      *)
+        echo "Usage: cn shares [ls|rm <slug>]" >&2
+        exit 1
+        ;;
+    esac
+    ;;
+
+  key)
+    curl -sf "${auth_args[@]}" "$CN_URL/api/key" \
+      | jq -r '"API key: " + (.api_key // "(not set)")'
+    ;;
+
+  help|--help|-h|'')
+    cat <<'EOF'
+cn — Clef Note CLI
+
+Usage: cn <command> [args]
+
+Commands:
+  ls                      List all notes (★ = pinned)
+  get  <name>             Print note content
+  put  <name>             Create/overwrite note from stdin
+  rm   <name>             Delete a note
+  mv   <old> <new>        Rename a note
+  query '<q>'             DSL query  (#tag, status:x, area:y, recent:10 …)
+  search '<text>'         Full-text search
+  shares                  List all shared links
+  shares rm <slug>        Delete a shared link
+  key                     Show API key
+
+Config (env vars):
+  CN_URL    Backend URL   (default: http://localhost:3000)
+  CN_KEY    API key       (fallback: CLEF_NOTE_KEY)
+
+Examples:
+  cn ls
+  cn get "Dev/Rust - lifetimes"
+  echo "# Hello" | cn put "scratch"
+  cn mv "scratch" "Notes/scratch"
+  cn query "#rust status:active"
+  cn search "ownership"
+  cn shares
+  cn shares rm my-note-abc123
+EOF
+    ;;
+
+  *)
+    echo "Unknown command: $cmd  (try: cn help)" >&2
+    exit 1
+    ;;
+esac

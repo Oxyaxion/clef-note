@@ -16,7 +16,7 @@
 - All the modern features: export notes / copy-paste images / Excalidraw drawings.
 - Responsive for smartphone.
 - Read-only mode.
-- API to query from the CLI (`scripts/an`).
+- API to query from the CLI (`scripts/cn`). See [API.md](API.md) for the full reference.
 - OpenAI-compatible endpoint to plug in an LLM.
 - **Git sync** — push notes to any GitHub / Gitea / Forgejo / GitLab repository (HTTPS token).
 - **OIDC authentication** — delegate login to Authelia, Authentik, Keycloak or any OIDC-compliant provider.
@@ -219,7 +219,7 @@ To import existing notes, copy your `.md` files into the storage directory — t
 |--------|-----------|
 | Web UI — password mode | Password → session token (localStorage, 30-day TTL) |
 | Web UI — OIDC mode | Authorization Code + PKCE via external provider |
-| CLI (`scripts/an`) | `AN_KEY` env var = `api_key` from config |
+| CLI (`scripts/cn`) | `CN_KEY` env var = `api_key` from config |
 
 The web UI shows a login page on first visit. Sessions expire after 30 days or on sign out.
 
@@ -313,48 +313,14 @@ interval_minutes = 30
 
 ---
 
-## API Reference
+## API & CLI
 
-All endpoints are served by the Rust backend on port `3000`.
+The REST API is documented in **[API.md](API.md)**, including:
 
-| Method   | Path                  | Description                          |
-|----------|-----------------------|--------------------------------------|
-| `GET`    | `/notes`              | List all notes                       |
-| `GET`    | `/notes/{*name}`      | Read note (`{name, content, frontmatter}`) |
-| `PUT`    | `/notes/{*name}`      | Create or overwrite note (`{content}`) |
-| `PATCH`  | `/notes/{*name}`      | Rename note (`{new_name}`)           |
-| `DELETE` | `/notes/{*name}`      | Delete note                          |
-| `GET`    | `/backlinks/{*name}`  | Backlinks for a note                 |
-| `POST`   | `/assets`             | Upload image (multipart), returns `{url}` |
-| `GET`    | `/api/search?q=`      | Full-text search                     |
-| `GET`    | `/api/query?q=`       | DSL metadata query                   |
-| `GET`    | `/api/sync/status`    | Git sync status `{configured, last_sync_at, last_error}` |
-| `POST`   | `/api/sync`           | Trigger an immediate sync            |
-
-### Query DSL examples
-
-Filters are combined with implicit AND. Tokens are whitespace-separated.
-
-```
-#work status:active                        → tagged "work" AND status "active"
-#work OR #perso                            → tagged "work" or "perso"
-NOT status:archived                        → all notes except archived
-recent:10                                  → 10 most recently modified notes
-oldest:5                                   → 5 least recently modified notes
-date:2025-04 type:meeting                  → meetings from April 2025
-#journal order by date desc                → journal notes, newest frontmatter date first
-recent:10 order by title                   → 10 freshest notes, sorted alphabetically
-status:active order by due                 → active tasks sorted by due date
-area:pro type:meeting print title date     → meetings with only title and date columns
-```
-
-**Filters:** bare word, `#tag`, `tag:`, `title:`, `path:`, `name:`, `depth:`, `status:`, `type:`, `area:`, `author:`, `rating:`, `date:`, `due:`, `lastModified:`, `url:`, `alias:`, `pinned:`, `priority:`, `project:`
-
-**Limiters:** `recent:n`, `oldest:n` — by filesystem modification date
-
-**Sort:** `order by <field> [asc|desc]` — fields: `name`, `title`, `date`, `modified`, `due`, `status`, `rating`, `area`, `author`, `priority`, `project`, `lastModified`
-
-**Columns:** `print <field> [field2 …]` — fields: `name`, `title`, `tags`, `date`, `status`, `area`, `author`, `due`, `rating`, `url`, `priority`, `project`
+- Quick start: getting your API key, environment variables
+- `cn` CLI script commands and examples (`ls`, `get`, `put`, `rm`, `mv`, `query`, `search`, `shares`, `key`)
+- Full endpoint reference (notes, search, assets, shared notes, git sync)
+- Query DSL filter/sort/logic reference
 
 ---
 
