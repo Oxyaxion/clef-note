@@ -17,7 +17,8 @@
 		saving: boolean;
 		saveFailed: boolean;
 		isMobile: boolean;
-		mobileReadOnly?: boolean;
+		/** Effective lock state from parent (frontmatter lock OR mobile read-only). */
+		lockedOverride?: boolean;
 		renaming?: boolean;
 		focusMode?: boolean;
 		rawView?: boolean;
@@ -40,7 +41,7 @@
 		saving,
 		saveFailed,
 		isMobile,
-		mobileReadOnly = false,
+		lockedOverride = undefined,
 		renaming = $bindable(false),
 		focusMode = $bindable(false),
 		rawView = false,
@@ -64,16 +65,9 @@
 
 	const isIndex = $derived(noteFrontmatter.type === 'index');
 
-	// Temporary unlock: when mobileReadOnly is on, the user can tap the lock to
-	// edit for the current note session without persisting to frontmatter.
-	let mobileUnlocked = $state(false);
-	$effect(() => {
-		selected; // reset on every note switch
-		mobileUnlocked = false;
-	});
-
-	const isMobileLocked = $derived(isMobile && mobileReadOnly && !mobileUnlocked);
-	const isLocked = $derived(noteFrontmatter.locked === true || isMobileLocked);
+	// Use parent-provided effective lock (covers both frontmatter + mobile read-only),
+	// or fall back to frontmatter alone when no override is given.
+	const isLocked = $derived(lockedOverride !== undefined ? lockedOverride : noteFrontmatter.locked === true);
 
 	function extractHeadings(md: string): Heading[] {
 		return Array.from(md.matchAll(/^(#{1,6})\s+(.+?)(?:\s+#+\s*)?$/gm)).map((m) => ({
@@ -113,20 +107,9 @@
 	}
 
 	function toggleLock() {
-		if (noteFrontmatter.locked) {
-			// Frontmatter lock: toggle it
-			const fm = { ...noteFrontmatter };
-			delete fm.locked;
-			onFrontmatterChange(fm);
-		} else if (isMobile && mobileReadOnly) {
-			// Mobile read-only: toggle the temporary session unlock
-			mobileUnlocked = !mobileUnlocked;
-		} else {
-			// Normal: lock via frontmatter
-			const fm = { ...noteFrontmatter };
-			fm.locked = true;
-			onFrontmatterChange(fm);
-		}
+		const fm = { ...noteFrontmatter };
+		if (fm.locked) { delete fm.locked; } else { fm.locked = true; }
+		onFrontmatterChange(fm);
 	}
 
 	async function confirmRename() {

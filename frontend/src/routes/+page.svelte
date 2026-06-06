@@ -70,6 +70,26 @@
 	// after a raw edit (reloadNonce) so the rich editor re-syncs from disk.
 	const editorReloadKey = $derived(`${selected}#${reloadNonce}`);
 
+	// Mobile read-only: temporary per-note unlock (not persisted to frontmatter).
+	let mobileUnlocked = $state(false);
+	$effect(() => { selected; mobileUnlocked = false; });
+	const effectiveLocked = $derived(
+		noteFrontmatter.locked === true ||
+		(isMobile && currentSettings.mobileReadOnly && !mobileUnlocked)
+	);
+	function toggleLock() {
+		if (!selected) return;
+		if (noteFrontmatter.locked) {
+			const fm = { ...noteFrontmatter };
+			delete fm.locked;
+			onFrontmatterChange(fm);
+		} else if (isMobile && currentSettings.mobileReadOnly) {
+			mobileUnlocked = !mobileUnlocked;
+		} else {
+			onFrontmatterChange({ ...noteFrontmatter, locked: true });
+		}
+	}
+
 	// Stable reference: only changes when note names actually change, not on every metadata save.
 	let _prevNoteNames: string[] = [];
 	const noteNames = $derived.by(() => {
@@ -344,15 +364,10 @@
 {#if isMobile}
 	<MobileTopBar
 		title={selected ?? 'Notes'}
-		isLocked={noteFrontmatter.locked === true}
+		isLocked={effectiveLocked}
 		hasNote={!!selected}
 		onMenu={() => (sidebarOpen = !sidebarOpen)}
-		onToggleLock={() => {
-			if (!selected) return;
-			const fm = { ...noteFrontmatter };
-			if (fm.locked) { delete fm.locked; } else { fm.locked = true; }
-			onFrontmatterChange(fm);
-		}}
+		onToggleLock={toggleLock}
 		onSearch={openPalette}
 	/>
 {/if}
@@ -384,7 +399,7 @@
 				saving={autoSave.saving}
 				saveFailed={autoSave.saveFailed}
 				{isMobile}
-				mobileReadOnly={currentSettings.mobileReadOnly}
+				lockedOverride={effectiveLocked}
 				bind:renaming
 				bind:focusMode
 				{rawView}
