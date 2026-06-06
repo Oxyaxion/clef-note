@@ -18,7 +18,6 @@
 	let vs: ViewState = $state({ kind: 'loading' });
 	let password = $state('');
 	let pwError = $state('');
-	let rawView = $state(false);
 
 	async function load(pw?: string) {
 		vs = { kind: 'loading' };
@@ -60,13 +59,14 @@
 		<span class="shared-brand">clef-note · shared note</span>
 		{#if vs.kind === 'ready'}
 			<div class="header-actions">
-				<button
+				<a
 					class="action-btn"
-					class:active={rawView}
-					onclick={() => (rawView = !rawView)}
-					title="Toggle raw markdown"
-				>Raw</button>
-<button class="action-btn" onclick={downloadMd} title="Download .md file">Download .md</button>
+					href="/api/shared/{slug}?raw=1"
+					target="_blank"
+					rel="noopener"
+					title="View raw markdown (curl/wget compatible)"
+				>Raw</a>
+				<button class="action-btn" onclick={downloadMd} title="Download .md file">Download .md</button>
 			</div>
 		{/if}
 	</header>
@@ -113,20 +113,14 @@
 
 		{:else if vs.kind === 'ready'}
 			<article class="note-article">
-				{#if !rawView}
-					<div class="editor-wrap">
-						<Editor
-							noteContent={vs.data.content}
-							noteKey={slug}
-							noteNames={[]}
-							isLocked={true}
-							noAuth={true}
-							onEdit={() => {}}
-						/>
-					</div>
-				{:else}
-					<pre class="raw-content">{vs.data.content}</pre>
-				{/if}
+				<Editor
+					noteContent={vs.data.content}
+					noteKey={slug}
+					noteNames={[]}
+					isLocked={true}
+					noAuth={true}
+					onEdit={() => {}}
+				/>
 			</article>
 		{/if}
 	</main>
@@ -283,23 +277,8 @@
 		max-width: 740px;
 	}
 
-	/* Raw view */
-	.raw-content {
-		font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
-		font-size: 0.85rem;
-		line-height: 1.7;
-		color: var(--text, #1a1a1a);
-		white-space: pre-wrap;
-		word-break: break-word;
-		background: none;
-		border: none;
-		padding: 0 3rem;
-		margin: 0;
-	}
-
 	@media (max-width: 640px) {
 		.shared-header { padding: 0.6rem 1rem; }
-		.raw-content { padding: 0 1rem; }
 		.header-actions { gap: 0.3rem; }
 		.action-btn { padding: 0.25rem 0.5rem; }
 	}
