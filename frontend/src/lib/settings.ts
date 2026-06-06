@@ -6,6 +6,7 @@ export interface AppSettings {
     vaultName: string;
     homePage: string;
     dateFormat: string;
+    mobileReadOnly: boolean;
 }
 
 export const FONT_PRESETS = [
@@ -30,6 +31,7 @@ export const DEFAULT: AppSettings = {
     vaultName: 'Notes',
     homePage: '',
     dateFormat: 'long-en',
+    mobileReadOnly: false,
 };
 
 export function applySettings(s: AppSettings): void {

@@ -17,6 +17,7 @@
 		saving: boolean;
 		saveFailed: boolean;
 		isMobile: boolean;
+		mobileReadOnly?: boolean;
 		renaming?: boolean;
 		focusMode?: boolean;
 		rawView?: boolean;
@@ -39,6 +40,7 @@
 		saving,
 		saveFailed,
 		isMobile,
+		mobileReadOnly = false,
 		renaming = $bindable(false),
 		focusMode = $bindable(false),
 		rawView = false,
@@ -61,7 +63,17 @@
 	let renameError = $state('');
 
 	const isIndex = $derived(noteFrontmatter.type === 'index');
-	const isLocked = $derived(noteFrontmatter.locked === true);
+
+	// Temporary unlock: when mobileReadOnly is on, the user can tap the lock to
+	// edit for the current note session without persisting to frontmatter.
+	let mobileUnlocked = $state(false);
+	$effect(() => {
+		selected; // reset on every note switch
+		mobileUnlocked = false;
+	});
+
+	const isMobileLocked = $derived(isMobile && mobileReadOnly && !mobileUnlocked);
+	const isLocked = $derived(noteFrontmatter.locked === true || isMobileLocked);
 
 	function extractHeadings(md: string): Heading[] {
 		return Array.from(md.matchAll(/^(#{1,6})\s+(.+?)(?:\s+#+\s*)?$/gm)).map((m) => ({
@@ -101,13 +113,20 @@
 	}
 
 	function toggleLock() {
-		const fm = { ...noteFrontmatter };
-		if (isLocked) {
+		if (noteFrontmatter.locked) {
+			// Frontmatter lock: toggle it
+			const fm = { ...noteFrontmatter };
 			delete fm.locked;
+			onFrontmatterChange(fm);
+		} else if (isMobile && mobileReadOnly) {
+			// Mobile read-only: toggle the temporary session unlock
+			mobileUnlocked = !mobileUnlocked;
 		} else {
+			// Normal: lock via frontmatter
+			const fm = { ...noteFrontmatter };
 			fm.locked = true;
+			onFrontmatterChange(fm);
 		}
-		onFrontmatterChange(fm);
 	}
 
 	async function confirmRename() {

@@ -384,6 +384,7 @@
 				saving={autoSave.saving}
 				saveFailed={autoSave.saveFailed}
 				{isMobile}
+				mobileReadOnly={currentSettings.mobileReadOnly}
 				bind:renaming
 				bind:focusMode
 				{rawView}

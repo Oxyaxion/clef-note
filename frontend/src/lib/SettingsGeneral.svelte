@@ -49,6 +49,16 @@
 				{/each}
 			</select>
 		</div>
+		<div class="setting-row">
+			<label class="setting-label" for="mobile-readonly">Read-only on mobile</label>
+			<input
+				id="mobile-readonly"
+				type="checkbox"
+				class="toggle"
+				bind:checked={settings.mobileReadOnly}
+				onchange={onChange}
+			/>
+		</div>
 		<p class="section-desc">
 			Shortcuts: <kbd>Ctrl+Shift+H</kbd> home · <kbd>Ctrl+Shift+P</kbd> back · <kbd>Ctrl+Shift+N</kbd> forward
 		</p>
@@ -147,6 +157,39 @@
 	}
 
 	.select-input:focus { border-color: var(--accent); }
+
+	.toggle {
+		appearance: none;
+		-webkit-appearance: none;
+		width: 36px;
+		height: 20px;
+		border-radius: 10px;
+		background: var(--border);
+		cursor: pointer;
+		position: relative;
+		flex-shrink: 0;
+		transition: background 150ms;
+	}
+
+	.toggle::after {
+		content: '';
+		position: absolute;
+		width: 14px;
+		height: 14px;
+		border-radius: 50%;
+		background: var(--text);
+		top: 3px;
+		left: 3px;
+		transition: transform 150ms;
+	}
+
+	.toggle:checked {
+		background: var(--accent);
+	}
+
+	.toggle:checked::after {
+		transform: translateX(16px);
+	}
 
 	@media (max-width: 640px) {
 		.setting-row {
