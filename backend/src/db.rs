@@ -275,17 +275,22 @@ fn make_snippet(body: &str, query: &str) -> String {
 
 // ── Query DSL ─────────────────────────────────────────────────────────────────
 
+/// Comparison operator for date range filters (`due>=:`, `date<:`, etc.).
+enum CmpOp { Lt, Lte, Gt, Gte }
+
 /// A single filter predicate, with a `not` flag for negation.
 enum Pred {
     Tag(String, bool),        // prefix match on any tag (lowercase)
     Status(String, bool),     // exact match
     DatePrefix(String, bool), // starts_with
+    DateCmp(CmpOp, String, bool), // lexicographic date comparison (ISO)
     Title(String, bool),      // substring on title field only (falls back to name if no title)
     Text(String, bool),       // bare word: substring on title OR name (lowercase)
     Path(String, bool),       // substring on full path (lowercase)
     FileName(String, bool),   // substring on last segment only (lowercase)
     NoteType(String, bool),   // exact match
     DuePrefix(String, bool),  // starts_with
+    DueCmp(CmpOp, String, bool),  // lexicographic date comparison (ISO)
     Area(String, bool),       // substring (lowercase)
     Author(String, bool),     // substring (lowercase)
     Rating(i64, bool),        // exact match
@@ -344,6 +349,14 @@ impl Pred {
                 let m = note.due.as_deref().is_some_and(|d| d.starts_with(prefix.as_str()));
                 if *not { !m } else { m }
             }
+            Pred::DueCmp(op, threshold, not) => {
+                let m = note.due.as_deref().is_some_and(|d| cmp_str(d, threshold, op));
+                if *not { !m } else { m }
+            }
+            Pred::DateCmp(op, threshold, not) => {
+                let m = note.date.as_deref().is_some_and(|d| cmp_str(d, threshold, op));
+                if *not { !m } else { m }
+            }
             Pred::Area(pattern, not) => {
                 let m = note.area.as_deref().is_some_and(|s| s.to_lowercase().contains(pattern.as_str()));
                 if *not { !m } else { m }
@@ -384,6 +397,15 @@ impl Pred {
                 if *not { !m } else { m }
             }
         }
+    }
+}
+
+fn cmp_str(val: &str, threshold: &str, op: &CmpOp) -> bool {
+    match op {
+        CmpOp::Lt  => val < threshold,
+        CmpOp::Lte => val <= threshold,
+        CmpOp::Gt  => val > threshold,
+        CmpOp::Gte => val >= threshold,
     }
 }
 
@@ -468,6 +490,16 @@ fn cmp_priority(a: Option<&str>, b: Option<&str>, desc: bool) -> std::cmp::Order
     }
 }
 
+/// Strip a trailing comparison operator from a field key and return (base_key, op).
+/// Checks `<=` / `>=` before `<` / `>` to avoid greedy single-char match.
+fn parse_cmp_op(k: &str) -> (&str, Option<CmpOp>) {
+    if let Some(f) = k.strip_suffix("<=") { return (f, Some(CmpOp::Lte)); }
+    if let Some(f) = k.strip_suffix(">=") { return (f, Some(CmpOp::Gte)); }
+    if let Some(f) = k.strip_suffix('<')  { return (f, Some(CmpOp::Lt));  }
+    if let Some(f) = k.strip_suffix('>')  { return (f, Some(CmpOp::Gt));  }
+    (k, None)
+}
+
 // ── Query parser ──────────────────────────────────────────────────────────────
 
 struct ParsedQuery {
@@ -510,8 +542,8 @@ fn parse_query(q: &str) -> ParsedQuery {
                 continue;
             }
             ObState::ExpectDir => {
-                let desc = upper == "DESC";
-                if upper == "ASC" || desc {
+                let desc = matches!(upper.as_str(), "DESC" | "REVERSE" | "REVERSED");
+                if matches!(upper.as_str(), "ASC" | "DESC" | "REVERSE" | "REVERSED") {
                     order_by = Some(OrderBy { field: ob_field.clone(), desc });
                     ob_state = ObState::Idle;
                     continue;
@@ -541,15 +573,22 @@ fn parse_query(q: &str) -> ParsedQuery {
         let pred = if let Some(v) = token.strip_prefix('#') {
             Pred::Tag(v.to_lowercase(), not)
         } else if let Some((k, v)) = token.split_once(':') {
-            match k.to_lowercase().as_str() {
+            let (base_k, cmp_op) = parse_cmp_op(k);
+            match base_k.to_lowercase().as_str() {
                 "tag"    => Pred::Tag(v.to_lowercase(), not),
                 "status" => Pred::Status(v.to_string(), not),
-                "date"   => Pred::DatePrefix(v.to_string(), not),
+                "date"   => match cmp_op {
+                    Some(op) => Pred::DateCmp(op, v.to_string(), not),
+                    None     => Pred::DatePrefix(v.to_string(), not),
+                },
                 "title"  => Pred::Title(v.to_lowercase(), not),
                 "path" => Pred::Path(v.to_lowercase(), not),
                 "name" => Pred::FileName(v.to_lowercase(), not),
                 "type"   => Pred::NoteType(v.to_string(), not),
-                "due"    => Pred::DuePrefix(v.to_string(), not),
+                "due"    => match cmp_op {
+                    Some(op) => Pred::DueCmp(op, v.to_string(), not),
+                    None     => Pred::DuePrefix(v.to_string(), not),
+                },
                 "area"   => Pred::Area(v.to_lowercase(), not),
                 "author" => Pred::Author(v.to_lowercase(), not),
                 "rating" => match v.parse::<i64>() {
@@ -1408,5 +1447,128 @@ mod tests {
 
         assert_eq!(sorted_names(&db, "status:active"), vec!["b"]);
         assert_eq!(sorted_names(&db, "status:Active"), vec!["a"]);
+    }
+
+    // ── Has / not-has field filters ───────────────────────────────────────────
+    // `due:` (empty prefix) = "has a due date"; `NOT due:` = "has no due date".
+    // Same logic applies to any prefix field (date:, lastModified:, etc.).
+
+    #[test]
+    fn due_colon_empty_matches_notes_with_any_due() {
+        let db = Db::new();
+        insert(&db, NoteRow { due: Some("2026-06-01".into()), ..r("has") });
+        insert(&db, NoteRow { ..r("no") });
+
+        assert_eq!(sorted_names(&db, "due:"), vec!["has"]);
+    }
+
+    #[test]
+    fn not_due_colon_empty_matches_notes_without_due() {
+        let db = Db::new();
+        insert(&db, NoteRow { due: Some("2026-06-01".into()), ..r("has") });
+        insert(&db, NoteRow { ..r("no") });
+
+        assert_eq!(sorted_names(&db, "NOT due:"), vec!["no"]);
+    }
+
+    #[test]
+    fn date_colon_empty_matches_notes_with_any_date() {
+        let db = Db::new();
+        insert(&db, NoteRow { date: Some("2026-01-01".into()), ..r("has") });
+        insert(&db, NoteRow { ..r("no") });
+
+        assert_eq!(sorted_names(&db, "date:"), vec!["has"]);
+        assert_eq!(sorted_names(&db, "NOT date:"), vec!["no"]);
+    }
+
+    // ── Date comparison operators ─────────────────────────────────────────────
+
+    #[test]
+    fn due_gte_matches_on_or_after() {
+        let db = Db::new();
+        insert(&db, NoteRow { due: Some("2026-05-01".into()), ..r("past") });
+        insert(&db, NoteRow { due: Some("2026-06-06".into()), ..r("today") });
+        insert(&db, NoteRow { due: Some("2026-07-01".into()), ..r("future") });
+        insert(&db, NoteRow { ..r("none") });
+
+        assert_eq!(sorted_names(&db, "due>=:2026-06-06"), vec!["future", "today"]);
+    }
+
+    #[test]
+    fn due_gt_excludes_exact_match() {
+        let db = Db::new();
+        insert(&db, NoteRow { due: Some("2026-06-06".into()), ..r("today") });
+        insert(&db, NoteRow { due: Some("2026-06-07".into()), ..r("tomorrow") });
+        insert(&db, NoteRow { ..r("none") });
+
+        assert_eq!(sorted_names(&db, "due>:2026-06-06"), vec!["tomorrow"]);
+    }
+
+    #[test]
+    fn due_lte_matches_on_or_before() {
+        let db = Db::new();
+        insert(&db, NoteRow { due: Some("2026-05-01".into()), ..r("past") });
+        insert(&db, NoteRow { due: Some("2026-06-06".into()), ..r("today") });
+        insert(&db, NoteRow { due: Some("2026-07-01".into()), ..r("future") });
+        insert(&db, NoteRow { ..r("none") });
+
+        assert_eq!(sorted_names(&db, "due<=:2026-06-06"), vec!["past", "today"]);
+    }
+
+    #[test]
+    fn due_lt_excludes_exact_match() {
+        let db = Db::new();
+        insert(&db, NoteRow { due: Some("2026-06-05".into()), ..r("yesterday") });
+        insert(&db, NoteRow { due: Some("2026-06-06".into()), ..r("today") });
+        insert(&db, NoteRow { ..r("none") });
+
+        assert_eq!(sorted_names(&db, "due<:2026-06-06"), vec!["yesterday"]);
+    }
+
+    #[test]
+    fn due_range_between_two_dates() {
+        let db = Db::new();
+        insert(&db, NoteRow { due: Some("2026-06-01".into()), ..r("a") });
+        insert(&db, NoteRow { due: Some("2026-06-15".into()), ..r("b") });
+        insert(&db, NoteRow { due: Some("2026-07-01".into()), ..r("c") });
+        insert(&db, NoteRow { due: Some("2026-05-31".into()), ..r("d") });
+        insert(&db, NoteRow { ..r("none") });
+
+        assert_eq!(sorted_names(&db, "due>=:2026-06-01 due<=:2026-06-30"), vec!["a", "b"]);
+    }
+
+    #[test]
+    fn due_cmp_excludes_notes_without_due() {
+        let db = Db::new();
+        insert(&db, NoteRow { due: Some("2026-06-01".into()), ..r("has_due") });
+        insert(&db, NoteRow { ..r("no_due") });
+
+        // Notes without a due field never match a comparison predicate
+        assert_eq!(sorted_names(&db, "due>=:2026-01-01"), vec!["has_due"]);
+        assert_eq!(sorted_names(&db, "due<=:2099-12-31"), vec!["has_due"]);
+    }
+
+    #[test]
+    fn date_cmp_operators() {
+        let db = Db::new();
+        insert(&db, NoteRow { date: Some("2025-03-01".into()), ..r("old") });
+        insert(&db, NoteRow { date: Some("2026-06-06".into()), ..r("now") });
+        insert(&db, NoteRow { date: Some("2026-12-01".into()), ..r("future") });
+        insert(&db, NoteRow { ..r("none") });
+
+        assert_eq!(sorted_names(&db, "date>=:2026-06-06"), vec!["future", "now"]);
+        assert_eq!(sorted_names(&db, "date<:2026-06-06"),  vec!["old"]);
+    }
+
+    #[test]
+    fn due_cmp_combined_with_status_filter() {
+        let db = Db::new();
+        insert(&db, NoteRow { due: Some("2026-06-01".into()), status: Some("todo".into()),   ..r("a") });
+        insert(&db, NoteRow { due: Some("2026-06-01".into()), status: Some("done".into()),   ..r("b") });
+        insert(&db, NoteRow { due: Some("2026-07-01".into()), status: Some("todo".into()),   ..r("c") });
+        insert(&db, NoteRow { ..r("none") });
+
+        // Overdue todos only
+        assert_eq!(sorted_names(&db, "due<=:2026-06-30 status:todo"), vec!["a"]);
     }
 }

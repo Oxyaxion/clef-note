@@ -58,6 +58,10 @@ lastModified: 2026-01-01
 
 > **Bare word** (`Rust`, `meeting`…): searches in the resolved title **and** in the full path. So a file at `Dev/Free-Infra` is found by `free` even if it has a different `title:` in its frontmatter.
 
+> **`today` keyword**: In any value position, `today` is replaced at display time by the current ISO date (`YYYY-MM-DD`). This makes date-relative queries evergreen — e.g. `due<=:today` always means "due by today" without manual updates.
+
+> **Has / not-has a field**: `due:` (empty value) matches all notes that have a `due` date set. `NOT due:` matches notes without one. This works for any prefix field: `NOT date:`, `NOT lastModified:`, etc.
+
 > `date` **vs modification date**: `date:` filters on the date manually written in the frontmatter (event date, publication date…). `recent:` and `oldest:` rely on the file's last modification date on disk — these are two independent things.
 
 > `depth:` counts the number of `/` in the note path. `depth:0` = root-level notes. Combined with `path:`, it restricts to direct children only: `path:Work/Projects/ depth:2` matches `Work/Projects/Alpha` but not `Work/Projects/Alpha/Tasks`. The depth of direct children = number of `/` in the folder prefix.
@@ -87,7 +91,11 @@ lastModified: 2026-01-01
 | `author:value` | Frontmatter `author` | Substring | `author:Smith` |
 | `rating:n` | Frontmatter `rating` | Exact | `rating:5` |
 | `date:prefix` | Frontmatter `date` (semantic date, written by the user) | Prefix | `date:2025` `date:2025-04` |
+| `date>=:YYYY-MM-DD` | Frontmatter `date` | On or after | `date>=:2026-01-01` |
+| `date<=:YYYY-MM-DD` | Frontmatter `date` | On or before | `date<=:2026-12-31` |
 | `due:prefix` | Frontmatter `due` | Prefix | `due:2025-05` |
+| `due>=:YYYY-MM-DD` | Frontmatter `due` | On or after | `due>=:2026-06-01` |
+| `due<=:YYYY-MM-DD` | Frontmatter `due` | On or before | `due<=:2026-06-30` |
 | `url:value` | Frontmatter `url` | Substring | `url:github.com` |
 | `alias:value` | Frontmatter `aliases` | Exact | `alias:my-shortcut` |
 | `pinned:true/false` | Frontmatter `pinned` | Exact | `pinned:true` |
@@ -131,10 +139,10 @@ NOT status:archived
 ### Sorting — `order by`
 
 ```
-order by <field> [asc|desc]
+order by <field> [asc|desc|reverse]
 ```
 
-Sorts results by a field. The default direction is `asc`.
+Sorts results by a field. The default direction is `asc`. `reverse` is an alias for `desc`.
 
 | Field | Sorts on |
 | --- | --- |
@@ -232,6 +240,36 @@ status:active order by priority
 ```
 
 ↳ Active tasks sorted by priority (urgent first)
+
+```
+due<=:today NOT status:done order by due asc
+```
+
+↳ Overdue or due today, not done — `today` updates automatically every day
+
+```
+due>=:today NOT status:done order by due asc
+```
+
+↳ Upcoming tasks from today, sorted by nearest deadline
+
+```
+due>=:today due<=:2026-06-30 NOT status:done order by priority
+```
+
+↳ Tasks due this month, not done, sorted by priority
+
+```
+NOT due: status:todo
+```
+
+↳ Todo items that have no deadline yet — the backlog to schedule
+
+```
+date:2026-06 order by date asc
+```
+
+↳ All events/notes in June 2026, sorted chronologically
 
 ```
 area:pro type:meeting recent:20 order by date desc print title date

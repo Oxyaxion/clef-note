@@ -1,5 +1,13 @@
 import type { NoteQueryResult } from './api';
 
+// ── Today keyword resolution ──────────────────────────────────────────────────
+
+/** Replace `today` (in value position, after `:`) with the current ISO date. */
+export function resolveToday(q: string): string {
+    const today = new Date().toISOString().slice(0, 10);
+    return q.replace(/(:\s*)today\b/gi, `$1${today}`);
+}
+
 // ── Autocomplete token detection ──────────────────────────────────────────────
 
 export interface ActiveToken {
@@ -26,7 +34,9 @@ export function getActiveToken(el: HTMLInputElement): ActiveToken | null {
     }
     const ci = tok.indexOf(':');
     if (ci > 0) {
-        const field = tok.slice(0, ci).toLowerCase();
+        // Strip trailing comparison operator (<=, >=, <, >) before looking up the field.
+        const rawField = tok.slice(0, ci).toLowerCase();
+        const field = rawField.replace(/[<>=]+$/, '');
         if (COMPLETABLE_FIELDS.has(field)) {
             return { type: 'field', field, partial: tok.slice(ci + 1), start: s, end: e };
         }

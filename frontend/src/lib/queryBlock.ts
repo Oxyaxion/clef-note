@@ -12,7 +12,7 @@ import { queryNotes, listTags, getFieldValues, type NoteQueryResult, type TagCou
 import { on } from './events';
 import { isAbortError } from './utils';
 import {
-    getActiveToken, parsePrint, ICON_LOCKED, ICON_UNLOCKED,
+    getActiveToken, parsePrint, resolveToday, ICON_LOCKED, ICON_UNLOCKED,
     type ActiveToken, type PrintSpec,
 } from './queryBlockHelpers';
 import { appendResultRows, buildTagCloud, buildTagCountCloud } from './queryBlockDom';
@@ -356,7 +356,7 @@ class QueryBlockNodeView {
             chipItems = await getFieldValues(token.field);
         }
         const baseQuery = this.stripToken(this.input.value, token);
-        const { cleanQuery } = parsePrint(baseQuery);
+        const { cleanQuery } = parsePrint(resolveToday(baseQuery));
         const rows = cleanQuery ? await queryNotes(cleanQuery) : [];
         this.acSuggestions = chipItems;
         this.acIndex = -1;
@@ -402,7 +402,7 @@ class QueryBlockNodeView {
         const ctrl = new AbortController();
         this.fetchCtrl = ctrl;
 
-        const { cleanQuery, print } = parsePrint(q);
+        const { cleanQuery, print } = parsePrint(resolveToday(q));
         this.currentPrint = print;
 
         if (!cleanQuery.trim()) {
