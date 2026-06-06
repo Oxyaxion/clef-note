@@ -18,6 +18,17 @@
 	let vs: ViewState = $state({ kind: 'loading' });
 	let password = $state('');
 	let pwError = $state('');
+	let rawCopied = $state(false);
+
+	function rawUrl() {
+		return `${window.location.origin}/api/shared/${slug}?raw=1`;
+	}
+
+	async function copyRawUrl() {
+		await navigator.clipboard.writeText(rawUrl());
+		rawCopied = true;
+		setTimeout(() => (rawCopied = false), 2000);
+	}
 
 	async function load(pw?: string) {
 		vs = { kind: 'loading' };
@@ -59,13 +70,12 @@
 		<span class="shared-brand">clef-note · shared note</span>
 		{#if vs.kind === 'ready'}
 			<div class="header-actions">
-				<a
+				<button
 					class="action-btn"
-					href="/api/shared/{slug}?raw=1"
-					target="_blank"
-					rel="noopener"
-					title="View raw markdown (curl/wget compatible)"
-				>Raw</a>
+					class:copied={rawCopied}
+					onclick={copyRawUrl}
+					title="Copy raw URL (curl/wget compatible)"
+				>{rawCopied ? 'URL copied!' : 'Raw'}</button>
 				<button class="action-btn" onclick={downloadMd} title="Download .md file">Download .md</button>
 			</div>
 		{/if}
