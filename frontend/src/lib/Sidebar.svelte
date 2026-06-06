@@ -35,6 +35,7 @@
 	let collapsed = $state(storage.sidebar.getCollapsed());
 
 	function toggleCollapse() {
+		if (mobileOpen) { onMobileClose?.(); return; }
 		collapsed = !collapsed;
 		storage.sidebar.setCollapsed(collapsed);
 	}
