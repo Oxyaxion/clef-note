@@ -1,7 +1,7 @@
 <div align="center">
   <img src="clef-note-logo.png" alt="Clef Note" width="200" />
   <h1>Clef Note</h1>
-  <p><em>A lightweight, fast, queryable, keyboard-oriented markdown note-taking app with a minimal footprint.</em></p>
+  <p><em>A fast and lightweight, keyboard-first, self-hosted markdown editor — plain files, live queries, one binary, zero lock-in.</em></p>
 </div>
 
 <br />
@@ -18,6 +18,7 @@
 - Read-only mode.
 - API to query from the CLI (`scripts/cn`). See [API.md](API.md) for the full reference.
 - OpenAI-compatible endpoint to plug in an LLM.
+- **Shared links** — share any note as a public read-only link, with optional password and expiry.
 - **Git sync** — push notes to any GitHub / Gitea / Forgejo / GitLab repository (HTTPS token).
 - **OIDC authentication** — delegate login to Authelia, Authentik, Keycloak or any OIDC-compliant provider.
 
