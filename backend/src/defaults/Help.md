@@ -58,6 +58,8 @@ lastModified: 2026-01-01
 
 > **Bare word** (`Rust`, `meeting`…): searches in the resolved title **and** in the full path. So a file at `Dev/Free-Infra` is found by `free` even if it has a different `title:` in its frontmatter.
 
+> **`*` wildcard**: A lone `*` returns all notes. Combined with other filters (`* status:active`) it is a no-op — the other filters still apply normally.
+
 > **`today` keyword**: In any value position, `today` is replaced at display time by the current ISO date (`YYYY-MM-DD`). This makes date-relative queries evergreen — e.g. `due<=:today` always means "due by today" without manual updates.
 
 > **Has / not-has a field**: `due:` (empty value) matches all notes that have a `due` date set. `NOT due:` matches notes without one. This works for any prefix field: `NOT date:`, `NOT lastModified:`, etc.

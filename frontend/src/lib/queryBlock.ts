@@ -402,10 +402,11 @@ class QueryBlockNodeView {
         const ctrl = new AbortController();
         this.fetchCtrl = ctrl;
 
-        const { cleanQuery, print } = parsePrint(resolveToday(q));
+        const { cleanQuery: rawQuery, print } = parsePrint(resolveToday(q));
+        const cleanQuery = rawQuery.replace(/\*/g, ' ').trim();
         this.currentPrint = print;
 
-        if (!cleanQuery.trim()) {
+        if (!cleanQuery) {
             this.countEl.textContent = '';
             this.results.innerHTML = '<span class="query-empty">Type a query above…</span>';
             this.fetchCtrl = null;
