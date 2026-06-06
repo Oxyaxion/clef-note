@@ -37,10 +37,12 @@
 		noteNames: string[];
 		isIndex?: boolean;
 		isLocked?: boolean;
+		/** When true, skip all authenticated API calls (alias fetch, image upload). */
+		noAuth?: boolean;
 		onEdit: (markdown: string) => void;
 	}
 
-	let { noteContent, noteKey, noteNames, isIndex = false, isLocked = false, onEdit }: Props = $props();
+	let { noteContent, noteKey, noteNames, isIndex = false, isLocked = false, noAuth = false, onEdit }: Props = $props();
 
 	let element: HTMLDivElement;
 	let editor: Editor | null = null;  // must NOT be $state — TipTap mutates it internally
@@ -59,7 +61,9 @@
 
 	// Load aliases on mount; reload only on rename/delete (notes:changed), not on every keystroke.
 	// noteNames changes on every save, so watching it would fire a GET /api/aliases per keystroke.
+	// Skipped in noAuth mode (public shared-note view) to avoid triggering auth:expired.
 	$effect(() => {
+		if (noAuth) return;
 		getAliases().then(m => { aliasMap = m; }).catch(() => {});
 		return on(document, 'notes:changed', () => {
 			getAliases().then(m => { aliasMap = m; }).catch(() => {});
@@ -149,10 +153,13 @@
 			},
 		});
 
+		if (!noAuth) {
 		_offInsertImage = on(document, 'insert-image', (url) => {
 			editor?.chain().focus().setImage({ src: url }).run();
 		});
+		}
 
+		if (!noAuth) {
 		// Capture-phase listeners run before ProseMirror sees the event.
 		// Return early (without stopImmediatePropagation) for non-image pastes so
 		// normal text/markdown paste continues to work.
@@ -182,6 +189,7 @@
 		};
 		element.addEventListener('paste', _imgPasteHandler as EventListener, true);
 		element.addEventListener('drop', _imgDropHandler as EventListener, true);
+		} // end !noAuth
 
 		editorReady = true;
 	});

@@ -4,10 +4,12 @@
 		listAssets, deleteAsset,
 		listDrawings, deleteDrawing,
 		getDrawingPreview, getMediaUsage,
-		type AssetMeta,
+		listShares,
+		type AssetMeta, type ShareMeta,
 	} from './api';
 	import MediaAssets from './MediaAssets.svelte';
 	import MediaDrawings from './MediaDrawings.svelte';
+	import MediaShares from './MediaShares.svelte';
 
 	const BASE = import.meta.env.VITE_API_BASE ?? '';
 
@@ -24,11 +26,12 @@
 	let drawings = $state<string[]>([]);
 	let drawingPreviews = $state<Record<string, string>>({});
 	let loading = $state(true);
-	let activeTab = $state<'images' | 'drawings'>('images');
+	let activeTab = $state<'images' | 'drawings' | 'shares'>('images');
 	let preview = $state<Preview | null>(null);
 	let usedAssets = $state<Set<string> | null>(null);
 	let usedDrawings = $state<Set<string> | null>(null);
 	let filter = $state<'all' | 'used' | 'orphaned'>('all');
+	let shares = $state<ShareMeta[]>([]);
 
 	onMount(async () => {
 		await reload();
@@ -37,13 +40,15 @@
 	async function reload() {
 		loading = true;
 		try {
-			const [assetList, drawingList, usage] = await Promise.all([
+			const [assetList, drawingList, usage, shareList] = await Promise.all([
 				listAssets(),
 				listDrawings(),
 				getMediaUsage().catch(() => null),
+				listShares().catch(() => [] as ShareMeta[]),
 			]);
 			assets = assetList;
 			drawings = drawingList;
+			shares = shareList;
 			if (usage) {
 				usedAssets = new Set(usage.used_assets);
 				usedDrawings = new Set(usage.used_drawings);
@@ -120,8 +125,11 @@
 				<button class="tab" class:active={activeTab === 'drawings'} onclick={() => (activeTab = 'drawings')}>
 					Drawings <span class="count">{drawings.length}</span>
 				</button>
+				<button class="tab" class:active={activeTab === 'shares'} onclick={() => (activeTab = 'shares')}>
+					Shares <span class="count">{shares.length}</span>
+				</button>
 			</div>
-			{#if usedAssets !== null}
+			{#if usedAssets !== null && activeTab !== 'shares'}
 				<div class="filter-pills">
 					<button class="pill" class:active={filter === 'all'} onclick={() => (filter = 'all')}>All</button>
 					<button class="pill" class:active={filter === 'used'} onclick={() => (filter = 'used')}>Used</button>
@@ -151,6 +159,11 @@
 				{filter}
 				onPreview={(name) => (preview = { kind: 'drawing', name })}
 				onDelete={removeDrawing}
+			/>
+		{:else if activeTab === 'shares'}
+			<MediaShares
+				{shares}
+				onChanged={reload}
 			/>
 		{/if}
 	</div>

@@ -4,6 +4,7 @@
 	import NoteEditorPane from '$lib/NoteEditorPane.svelte';
 	import CommandPalette from '$lib/CommandPalette.svelte';
 	import Settings from '$lib/Settings.svelte';
+	import ShareModal from '$lib/ShareModal.svelte';
 	import MetaPage from '$lib/MetaPage.svelte';
 	import LoginPage from '$lib/LoginPage.svelte';
 	import ConfirmDialog from '$lib/ConfirmDialog.svelte';
@@ -59,6 +60,7 @@
 	let oidcError = $state<string | null>(null);
 	let settingsOpen = $state(false);
 	let metaPageOpen = $state(false);
+	let shareModalOpen = $state(false);
 	let currentSettings = $state<AppSettings>({ ...DEFAULT });
 	const nav = createNavigation();
 	let confirmDialog = $state<{ message: string; onConfirm: () => void } | null>(null);
@@ -328,6 +330,13 @@
 	/>
 {/if}
 
+{#if shareModalOpen && selected}
+	<ShareModal
+		noteName={selected}
+		onClose={() => (shareModalOpen = false)}
+	/>
+{/if}
+
 {#if settingsOpen}
 	<Settings
 		{currentTheme}
@@ -358,6 +367,7 @@
 		onSetTheme={(id) => { currentTheme = id; applyTheme(id); }}
 		onSettings={() => (settingsOpen = true)}
 		onMediaLibrary={() => (metaPageOpen = true)}
+		onShare={selected ? () => (shareModalOpen = true) : undefined}
 	/>
 {/if}
 

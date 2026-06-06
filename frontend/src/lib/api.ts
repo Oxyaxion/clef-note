@@ -356,6 +356,79 @@ export async function triggerSync(): Promise<void> {
     });
 }
 
+// ── Shares ────────────────────────────────────────────────────────────────────
+
+export interface ShareMeta {
+    slug: string;
+    note: string;
+    created_at: string;
+    expires_at: string | null;
+    has_password: boolean;
+}
+
+export interface SharedNoteContent {
+    slug: string;
+    title: string;
+    content: string;
+    note: string;
+    expires_at: string | null;
+}
+
+export async function listShares(): Promise<ShareMeta[]> {
+    const res = await apiFetch(`${BASE}/api/shares`, { headers: authHeaders() });
+    if (!res.ok) throw new Error('Failed to list shares');
+    return res.json();
+}
+
+export async function createShare(opts: {
+    slug: string;
+    note: string;
+    expires_at: string | null;
+    password?: string;
+}): Promise<ShareMeta> {
+    const res = await apiFetch(`${BASE}/api/shares`, {
+        method: 'POST',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(opts),
+    });
+    if (res.status === 409) throw new Error('slug-conflict');
+    if (!res.ok) throw new Error('Failed to create share');
+    return res.json();
+}
+
+export async function deleteShare(slug: string): Promise<void> {
+    const res = await apiFetch(`${BASE}/api/shares/${encodeURIComponent(slug)}`, {
+        method: 'DELETE',
+        headers: authHeaders(),
+    });
+    if (!res.ok) throw new Error('Failed to delete share');
+}
+
+export async function updateShare(slug: string, opts: {
+    expires_at?: string | null;
+    password?: string;
+}): Promise<ShareMeta> {
+    const res = await apiFetch(`${BASE}/api/shares/${encodeURIComponent(slug)}`, {
+        method: 'PATCH',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(opts),
+    });
+    if (!res.ok) throw new Error('Failed to update share');
+    return res.json();
+}
+
+/** Fetch a public shared note. Pass password via X-Share-Password header if needed. */
+export async function getSharedNote(
+    slug: string,
+    password?: string,
+): Promise<{ ok: true; data: SharedNoteContent } | { ok: false; status: 401 | 404 | 410 | number }> {
+    const headers: Record<string, string> = {};
+    if (password) headers['X-Share-Password'] = password;
+    const res = await fetch(`${BASE}/api/shared/${encodeURIComponent(slug)}`, { headers });
+    if (res.ok) return { ok: true, data: await res.json() };
+    return { ok: false, status: res.status };
+}
+
 // ── Frontmatter helpers ───────────────────────────────────────────────────────
 
 export { serializeFrontmatter } from './frontmatter';

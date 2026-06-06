@@ -13,13 +13,14 @@ mod query;
 mod seed;
 mod session;
 mod settings;
+mod shares;
 mod sync;
 
 use std::sync::Arc;
 
 use axum::{
     Json, Router, extract::State, http::StatusCode, middleware,
-    routing::{delete, get, post},
+    routing::{delete, get, patch, post},
 };
 use tower_http::cors::{Any, CorsLayer};
 
@@ -201,6 +202,8 @@ async fn run_server(state: Arc<AppState>, port: u16) {
         .route("/api/openapi.json", get(openapi::get_spec))
         .route("/api/sync/status", get(get_sync_status))
         .route("/api/sync", post(trigger_sync))
+        .route("/api/shares", get(shares::list_shares).post(shares::create_share))
+        .route("/api/shares/{slug}", delete(shares::delete_share).patch(shares::update_share))
         .route("/auth/logout", post(auth::logout))
         .layer(middleware::from_fn_with_state(state.clone(), auth::middleware));
 
@@ -213,6 +216,7 @@ async fn run_server(state: Arc<AppState>, port: u16) {
         .route("/auth/oidc/exchange", post(oidc::exchange_handler))
         .route("/api/auth/config", get(oidc::auth_config_handler))
         .route("/assets/{*filename}", get(notes::serve_asset))
+        .route("/api/shared/{slug}", get(shares::get_shared))
         .fallback(frontend::handler)
         .with_state(state)
         .layer(cors);

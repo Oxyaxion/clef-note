@@ -7,7 +7,7 @@
 	import {
 		copyMarkdown, copyMarkdownClean, copyHtml,
 		downloadMd, downloadMdClean,
-		printNote, shareNote, canShare,
+		printNote,
 	} from './noteExport';
 
 	interface Command {
@@ -33,9 +33,10 @@
 		onSetTheme: (id: ThemeId) => void;
 		onSettings: () => void;
 		onMediaLibrary: () => void;
+		onShare?: () => void;
 	}
 
-	let { notes, selected, noteMarkdown = '', rawView = false, currentTheme = 'default', onSelect, onClose, onNewNote, onRename, onDelete, onToggleRaw, onSetTheme, onSettings, onMediaLibrary }: Props = $props();
+	let { notes, selected, noteMarkdown = '', rawView = false, currentTheme = 'default', onSelect, onClose, onNewNote, onRename, onDelete, onToggleRaw, onSetTheme, onSettings, onMediaLibrary, onShare }: Props = $props();
 
 	let query = $state('');
 	let selectedIndex = $state(0);
@@ -161,11 +162,12 @@
 			icon: '⎙',
 			action: () => { onClose(); printNote(); },
 		},
-		...(canShare ? [{
+		...(onShare ? [{
 			id: 'share',
-			label: 'Share',
+			label: 'Share note…',
+			hint: 'Create a public link',
 			icon: '↗',
-			action: async () => { await shareNote(selected, noteMarkdown); onClose(); },
+			action: () => { onClose(); onShare!(); },
 		}] : []),
 	] : []);
 
