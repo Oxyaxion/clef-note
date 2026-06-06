@@ -39,10 +39,12 @@
 		isLocked?: boolean;
 		/** When true, skip all authenticated API calls (alias fetch, image upload). */
 		noAuth?: boolean;
+		/** Bump to programmatically focus the editor (e.g. after note creation). */
+		focusRequest?: number;
 		onEdit: (markdown: string) => void;
 	}
 
-	let { noteContent, noteKey, noteNames, isIndex = false, isLocked = false, noAuth = false, onEdit }: Props = $props();
+	let { noteContent, noteKey, noteNames, isIndex = false, isLocked = false, noAuth = false, focusRequest = 0, onEdit }: Props = $props();
 
 	let element: HTMLDivElement;
 	let editor: Editor | null = null;  // must NOT be $state — TipTap mutates it internally
@@ -213,6 +215,11 @@
 	$effect(() => {
 		if (!editorReady || !editor) return;
 		editor.setEditable(!isLocked);
+	});
+
+	$effect(() => {
+		if (!focusRequest || !editorReady || !editor) return;
+		editor.commands.focus('end');
 	});
 
 	onDestroy(() => {

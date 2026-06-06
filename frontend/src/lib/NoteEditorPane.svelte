@@ -31,6 +31,7 @@
 		onNavigate: (name: string) => void;
 		onRenamed: (oldName: string, newName: string) => void;
 		onOpenPalette: () => void;
+		focusRequest?: number;
 	}
 
 	let {
@@ -53,6 +54,7 @@
 		onNavigate,
 		onRenamed,
 		onOpenPalette,
+		focusRequest = 0,
 	}: Props = $props();
 
 	// Full markdown source (frontmatter block + body) for the raw view.
@@ -171,7 +173,7 @@
 				onChange={onFrontmatterChange}
 			/>
 		{/key}
-		<Editor {noteContent} noteKey={reloadKey} {noteNames} {onEdit} {isIndex} {isLocked} />
+		<Editor {noteContent} noteKey={reloadKey} {noteNames} {onEdit} {isIndex} {isLocked} {focusRequest} />
 	</div>
 
 	{#if !focusMode}

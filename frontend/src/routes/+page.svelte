@@ -52,6 +52,7 @@
 	let rawView = $state(false);    // raw markdown source view
 	let rawDirty = $state(false);   // a raw edit happened → resync on exit
 	let reloadNonce = $state(0);    // bumped to force the editor to re-sync content
+	let focusEditorNonce = $state(0); // bumped to auto-focus editor (e.g. after note creation)
 	let isMobile = $state(false);
 	let creatingFromPalette = $state(false);
 	let currentTheme = $state<ThemeId>('default');
@@ -210,6 +211,7 @@
 		}
 		notes = [...notes, { name, pinned: false }];
 		await selectNote(name);
+		focusEditorNonce++;
 	}
 
 	function onEdit(markdown: string) {
@@ -421,6 +423,7 @@
 				onNavigate={selectNote}
 				onRenamed={handleRenamed}
 				onOpenPalette={openPalette}
+				focusRequest={focusEditorNonce}
 			/>
 		{:else if loadError}
 			<div class="empty-state error-state">
