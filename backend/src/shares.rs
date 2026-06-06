@@ -4,7 +4,7 @@ use std::sync::Arc;
 use argon2::password_hash::{PasswordHasher, SaltString};
 use argon2::{Argon2, PasswordHash, PasswordVerifier};
 use axum::{
-    extract::{Path, Query, State},
+    extract::{ConnectInfo, Path, Query, State},
     http::{HeaderMap, StatusCode, header},
     response::IntoResponse,
     Json,
@@ -234,10 +234,12 @@ pub struct SharedQuery {
 
 pub async fn get_shared(
     State(state): State<Arc<AppState>>,
+    ConnectInfo(addr): ConnectInfo<std::net::SocketAddr>,
     Path(slug): Path<String>,
     Query(params): Query<SharedQuery>,
     headers: HeaderMap,
 ) -> impl IntoResponse {
+    let ip = addr.ip();
     let shares = load_shares(&state).await;
     let Some(share) = shares.get(&slug) else {
         return StatusCode::NOT_FOUND.into_response();
@@ -255,6 +257,10 @@ pub async fn get_shared(
 
     // Password check via X-Share-Password header
     if let Some(hash_str) = &share.password_hash {
+        if state.login_guard.is_locked(ip) {
+            return StatusCode::TOO_MANY_REQUESTS.into_response();
+        }
+
         let provided = headers.get("x-share-password").and_then(|v| v.to_str().ok());
         let ok = provided
             .and_then(|pw| PasswordHash::new(hash_str).ok().map(|h| (pw, h)))
@@ -262,12 +268,14 @@ pub async fn get_shared(
             .unwrap_or(false);
 
         if !ok {
+            state.login_guard.record_failure(ip);
             return (
                 StatusCode::UNAUTHORIZED,
                 Json(serde_json::json!({"error": "Password required", "password_required": true})),
             )
                 .into_response();
         }
+        state.login_guard.record_success(ip);
     }
 
     // Load note
