@@ -114,7 +114,6 @@
 		{:else if vs.kind === 'ready'}
 			<article class="note-article">
 				{#if !rawView}
-					<h1 class="note-title">{vs.data.title}</h1>
 					<div class="editor-wrap">
 						<Editor
 							noteContent={vs.data.content}
@@ -284,15 +283,6 @@
 		max-width: 740px;
 	}
 
-	.note-title {
-		font-size: 1.9rem;
-		font-weight: 700;
-		letter-spacing: -0.03em;
-		margin: 0 0 2rem;
-		color: var(--text, #1a1a1a);
-		padding: 0 3rem;
-	}
-
 	/* Raw view */
 	.raw-content {
 		font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
@@ -309,7 +299,7 @@
 
 	@media (max-width: 640px) {
 		.shared-header { padding: 0.6rem 1rem; }
-		.note-title, .raw-content { padding: 0 1rem; }
+		.raw-content { padding: 0 1rem; }
 		.header-actions { gap: 0.3rem; }
 		.action-btn { padding: 0.25rem 0.5rem; }
 	}
