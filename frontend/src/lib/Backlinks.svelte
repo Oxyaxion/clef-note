@@ -136,4 +136,11 @@
 	.bl-name {
 		color: var(--accent);
 	}
+
+	@media (max-width: 600px) {
+		.backlinks {
+			padding: 0.35rem 1rem 0.45rem;
+			gap: 0.3rem;
+		}
+	}
 </style>
