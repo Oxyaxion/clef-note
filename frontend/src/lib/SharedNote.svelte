@@ -53,7 +53,6 @@
 		URL.revokeObjectURL(a.href);
 	}
 
-	const rawUrl = $derived(`${window.location.origin}/api/shared/${slug}?raw=1`);
 </script>
 
 <div class="shared-page">
@@ -67,8 +66,7 @@
 					onclick={() => (rawView = !rawView)}
 					title="Toggle raw markdown"
 				>Raw</button>
-				<a class="action-btn" href={rawUrl} target="_blank" rel="noopener" title="Open raw markdown">curl ↗</a>
-				<button class="action-btn" onclick={downloadMd} title="Download .md file">Download .md</button>
+<button class="action-btn" onclick={downloadMd} title="Download .md file">Download .md</button>
 			</div>
 		{/if}
 	</header>
