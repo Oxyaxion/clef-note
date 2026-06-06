@@ -20,6 +20,7 @@ use crate::notes::is_safe_note_name;
 
 static DRAWING_RE: OnceLock<Regex> = OnceLock::new();
 static QUERY_RE: OnceLock<Regex> = OnceLock::new();
+static EMBED_RE: OnceLock<Regex> = OnceLock::new();
 static WIKI_ALIAS_RE: OnceLock<Regex> = OnceLock::new();
 static WIKI_RE: OnceLock<Regex> = OnceLock::new();
 static MULTI_BLANK_RE: OnceLock<Regex> = OnceLock::new();
@@ -71,16 +72,20 @@ fn is_valid_slug(s: &str) -> bool {
 
 // ── Preprocessing ─────────────────────────────────────────────────────────
 
-/// Strip internal constructs (wiki links, query/drawing blocks) before serving.
+/// Strip internal constructs (wiki links, query/drawing blocks, image embeds) before serving.
 pub fn preprocess_for_share(content: &str) -> String {
     let drawing_re = DRAWING_RE.get_or_init(|| Regex::new(r"(?s)```drawing\n.*?```").unwrap());
     let query_re   = QUERY_RE.get_or_init(||   Regex::new(r"(?s)```query\n.*?```").unwrap());
+    // ![[...]] Obsidian-style image/file embeds — remove entirely
+    let embed_re   = EMBED_RE.get_or_init(||   Regex::new(r"!\[\[[^\]]+\]\]").unwrap());
+    // [[Note|alias]] → alias, [[Note]] → Note
     let alias_re   = WIKI_ALIAS_RE.get_or_init(|| Regex::new(r"\[\[[^\]|]+\|([^\]]+)\]\]").unwrap());
     let wiki_re    = WIKI_RE.get_or_init(||    Regex::new(r"\[\[([^\]|]+)\]\]").unwrap());
     let blank_re   = MULTI_BLANK_RE.get_or_init(|| Regex::new(r"\n{3,}").unwrap());
 
     let s = drawing_re.replace_all(content, "");
     let s = query_re.replace_all(&s, "");
+    let s = embed_re.replace_all(&s, "");
     let s = alias_re.replace_all(&s, "$1");
     let s = wiki_re.replace_all(&s, "$1");
     blank_re.replace_all(&s, "\n\n").trim().to_string()
