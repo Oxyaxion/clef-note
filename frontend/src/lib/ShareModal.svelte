@@ -93,6 +93,20 @@
 	}
 
 	let copied = $state(false);
+	let copiedCurl = $state(false);
+
+	function curlCommand(): string {
+		const url = `${window.location.origin}/api/shared/${createdSlug}?raw=1`;
+		return password
+			? `curl "${url}" \\\n  -H "X-Share-Password: ${password}"`
+			: `curl "${url}"`;
+	}
+
+	async function copyCurl() {
+		await navigator.clipboard.writeText(curlCommand());
+		copiedCurl = true;
+		setTimeout(() => (copiedCurl = false), 2000);
+	}
 
 	function onKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') onClose();
@@ -134,10 +148,14 @@
 				{#if password}
 					<p class="hint">Password protected</p>
 				{/if}
-				<div class="curl-hint">
-					<p class="hint">Raw markdown via curl:</p>
-					<code class="curl-code">curl "{window.location.origin}/api/shared/{createdSlug}?raw=1"{password ? ` \\\n  -H "X-Share-Password: ${password}"` : ''}</code>
-				</div>
+				<button class="curl-copy-btn" onclick={copyCurl} class:copied={copiedCurl}>
+					{#if copiedCurl}
+						Copied!
+					{:else}
+						<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="5" y="5" width="9" height="9" rx="1.5" stroke="currentColor" stroke-width="1.2"/><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5" stroke="currentColor" stroke-width="1.2"/></svg>
+						Copy curl command
+					{/if}
+				</button>
 			</div>
 		{:else}
 			<!-- ── Form ── -->
@@ -479,22 +497,23 @@
 		margin: 0;
 	}
 
-	.curl-hint {
-		display: flex;
-		flex-direction: column;
-		gap: 0.3rem;
+	.curl-copy-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.4rem;
+		padding: 0.25rem 0.65rem;
+		border-radius: 5px;
+		border: 1px solid var(--border);
+		background: var(--bg);
+		color: var(--muted);
+		font-size: 0.78rem;
+		font-family: monospace;
+		cursor: pointer;
+		align-self: flex-start;
+		transition: color 80ms, border-color 80ms;
 	}
 
-	.curl-code {
-		font-family: monospace;
-		font-size: 0.76rem;
-		background: var(--bg);
-		border: 1px solid var(--border);
-		border-radius: 6px;
-		padding: 0.5rem 0.7rem;
-		color: var(--text);
-		white-space: pre-wrap;
-		word-break: break-all;
-		display: block;
-	}
+	.curl-copy-btn svg { width: 13px; height: 13px; flex-shrink: 0; }
+	.curl-copy-btn:hover { color: var(--text); border-color: var(--text); }
+	.curl-copy-btn.copied { color: var(--accent); border-color: var(--accent); }
 </style>
