@@ -91,6 +91,17 @@ pub fn preprocess_for_share(content: &str) -> String {
     blank_re.replace_all(&s, "\n\n").trim().to_string()
 }
 
+/// Remove all expired shares from storage. Called on startup and hourly.
+pub async fn purge_expired(state: &AppState) {
+    let mut shares = load_shares(state).await;
+    let before = shares.len();
+    shares.retain(|_, s| s.expires_at.map_or(true, |exp| Utc::now() <= exp));
+    if shares.len() < before {
+        save_shares(state, &shares).await;
+        tracing::info!("Purged {} expired share(s)", before - shares.len());
+    }
+}
+
 // ── Authenticated CRUD ────────────────────────────────────────────────────
 
 #[derive(Deserialize)]

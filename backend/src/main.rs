@@ -54,6 +54,7 @@ async fn main() {
     let (state, port) = setup_state().await;
     let state = Arc::new(state);
     start_sync_task(&state);
+    start_share_purge_task(&state);
     run_server(state, port).await;
 }
 
@@ -151,6 +152,19 @@ fn start_sync_task(state: &Arc<AppState>) {
                 ticker.tick().await;
                 sync::run_sync(&cfg, &storage, &status).await;
             }
+        }
+    });
+}
+
+fn start_share_purge_task(state: &Arc<AppState>) {
+    let state = state.clone();
+    tokio::spawn(async move {
+        shares::purge_expired(&state).await;
+        let mut ticker = tokio::time::interval(tokio::time::Duration::from_secs(3600));
+        ticker.tick().await; // first tick fires immediately — skip it
+        loop {
+            ticker.tick().await;
+            shares::purge_expired(&state).await;
         }
     });
 }
