@@ -24,8 +24,18 @@
 		return `${window.location.origin}/api/shared/${slug}?raw=1`;
 	}
 
+	function rawCopyText(): string {
+		if (password) {
+			return `curl "${rawUrl()}" \\\n  -H "X-Share-Password: ${password}"`;
+		}
+		return rawUrl();
+	}
+
+	const rawLabel = $derived(password ? 'Copy curl' : 'Raw');
+	const rawCopiedLabel = $derived(password ? 'curl copied!' : 'URL copied!');
+
 	async function copyRawUrl() {
-		await navigator.clipboard.writeText(rawUrl());
+		await navigator.clipboard.writeText(rawCopyText());
 		rawCopied = true;
 		setTimeout(() => (rawCopied = false), 2000);
 	}
@@ -74,8 +84,8 @@
 					class="action-btn"
 					class:copied={rawCopied}
 					onclick={copyRawUrl}
-					title="Copy raw URL (curl/wget compatible)"
-				>{rawCopied ? 'URL copied!' : 'Raw'}</button>
+					title={password ? 'Copy curl command with password' : 'Copy raw URL (curl/wget compatible)'}
+				>{rawCopied ? rawCopiedLabel : rawLabel}</button>
 				<button class="action-btn" onclick={downloadMd} title="Download .md file">Download .md</button>
 			</div>
 		{/if}
