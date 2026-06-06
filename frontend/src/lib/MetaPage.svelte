@@ -184,6 +184,7 @@
 				maxBytes={stubsMaxBytes}
 				onMaxBytesChange={async (v) => { stubsMaxBytes = v; await reloadStubs(); }}
 				onNavigate={(name) => { onClose(); onNavigate(name); }}
+				onDeleted={(name) => { stubs = stubs.filter(s => s.name !== name); }}
 			/>
 		{/if}
 	</div>
