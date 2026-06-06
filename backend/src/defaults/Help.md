@@ -104,7 +104,9 @@ lastModified: 2026-01-01
 | `locked:true/false` | Frontmatter `locked` | Exact | `locked:true` |
 | `lastModified:prefix` | Frontmatter `lastModified` (auto-updated on save) | Prefix | `lastModified:2026-05` |
 | `recent:n` | **File modification** date | The n most recent | `recent:10` |
+| `recent:` | **File modification** date | All notes, most recent first | `recent:` |
 | `oldest:n` | **File modification** date | The n oldest | `oldest:5` |
+| `oldest:` | **File modification** date | All notes, oldest first | `oldest:` |
 
 ---
 

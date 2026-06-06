@@ -12,6 +12,11 @@
 		if (e.key === 'Escape') onCancel();
 	}
 
+	function onDialogKeydown(e: KeyboardEvent) {
+		if (e.key === 'Enter') { e.preventDefault(); onConfirm(); }
+		if (e.key === 'Escape') onCancel();
+	}
+
 	function focusTrap(el: HTMLElement) {
 		el.focus();
 	}
@@ -31,6 +36,7 @@
 		aria-modal="true"
 		aria-describedby="dlg-msg"
 		use:focusTrap
+		onkeydown={onDialogKeydown}
 	>
 		<p id="dlg-msg">{message}</p>
 		<div class="actions">
@@ -53,6 +59,7 @@
 	}
 
 	.dialog {
+		position: relative; /* override browser UA absolute positioning so flexbox centers it */
 		background: var(--bg);
 		border: 1px solid var(--border);
 		border-radius: 10px;

@@ -638,11 +638,11 @@ fn parse_query(q: &str) -> ParsedQuery {
                     _       => continue,
                 },
                 "recent" => {
-                    if let Ok(n) = v.parse::<usize>() { recent = Some(n); }
+                    recent = Some(if v.is_empty() { usize::MAX } else if let Ok(n) = v.parse() { n } else { continue });
                     continue;
                 }
                 "oldest" => {
-                    if let Ok(n) = v.parse::<usize>() { oldest = Some(n); }
+                    oldest = Some(if v.is_empty() { usize::MAX } else if let Ok(n) = v.parse() { n } else { continue });
                     continue;
                 }
                 _ => continue,

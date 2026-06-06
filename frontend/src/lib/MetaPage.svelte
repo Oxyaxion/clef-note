@@ -17,8 +17,9 @@
 	interface Props {
 		onClose: () => void;
 		onNavigate: (name: string) => void;
+		onNoteDeleted?: (name: string) => void;
 	}
-	let { onClose, onNavigate }: Props = $props();
+	let { onClose, onNavigate, onNoteDeleted }: Props = $props();
 
 	type Preview =
 		| { kind: 'image'; asset: AssetMeta }
@@ -184,7 +185,7 @@
 				maxBytes={stubsMaxBytes}
 				onMaxBytesChange={async (v) => { stubsMaxBytes = v; await reloadStubs(); }}
 				onNavigate={(name) => { onClose(); onNavigate(name); }}
-				onDeleted={(name) => { stubs = stubs.filter(s => s.name !== name); }}
+				onDeleted={(name) => { stubs = stubs.filter(s => s.name !== name); onNoteDeleted?.(name); }}
 			/>
 		{/if}
 	</div>

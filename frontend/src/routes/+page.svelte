@@ -401,7 +401,7 @@
 
 	<main class="main">
 		{#if metaPageOpen}
-			<MetaPage onClose={() => (metaPageOpen = false)} onNavigate={selectNote} />
+			<MetaPage onClose={() => (metaPageOpen = false)} onNavigate={selectNote} onNoteDeleted={(name) => { notes = notes.filter(n => n.name !== name); if (selected === name) { selected = null; noteContent = ''; noteFrontmatter = {}; } }} />
 		{:else if selected}
 			<NoteEditorPane
 				{selected}
