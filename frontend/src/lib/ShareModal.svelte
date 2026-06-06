@@ -93,6 +93,7 @@
 	}
 
 	let copied = $state(false);
+	let curlPopover = $state(false);
 
 	function onKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape') onClose();
@@ -125,6 +126,16 @@
 					<button class="copy-btn" onclick={copyLink} class:copied>
 						{copied ? 'Copied!' : 'Copy'}
 					</button>
+					<div class="curl-wrap">
+						<button class="curl-btn" onclick={() => (curlPopover = !curlPopover)} title="curl command">
+							curl
+						</button>
+						{#if curlPopover}
+							<div class="curl-popover">
+								<code class="curl-code">curl "{window.location.origin}/api/shared/{createdSlug}?raw=1"{password ? ` \\\n  -H "X-Share-Password: ${password}"` : ''}</code>
+							</div>
+						{/if}
+					</div>
 				</div>
 				{#if expiryDays > 0}
 					<p class="hint">Expires in {expiryDays} day{expiryDays > 1 ? 's' : ''}</p>
@@ -134,10 +145,6 @@
 				{#if password}
 					<p class="hint">Password protected</p>
 				{/if}
-				<div class="curl-hint">
-					<p class="hint">Raw markdown via curl:</p>
-					<code class="curl-code">curl "{window.location.origin}/api/shared/{createdSlug}?raw=1"{password ? ` \\\n  -H "X-Share-Password: ${password}"` : ''}</code>
-				</div>
 			</div>
 		{:else}
 			<!-- ── Form ── -->
@@ -479,22 +486,46 @@
 		margin: 0;
 	}
 
-	.curl-hint {
-		display: flex;
-		flex-direction: column;
-		gap: 0.3rem;
+	.curl-wrap {
+		position: relative;
+		flex-shrink: 0;
+	}
+
+	.curl-btn {
+		padding: 0.35rem 0.65rem;
+		border-radius: 6px;
+		border: 1px solid var(--border);
+		background: var(--bg);
+		color: var(--muted);
+		font-size: 0.78rem;
+		font-family: monospace;
+		cursor: pointer;
+		white-space: nowrap;
+	}
+
+	.curl-btn:hover { color: var(--text); border-color: var(--text); }
+
+	.curl-popover {
+		position: absolute;
+		top: calc(100% + 6px);
+		right: 0;
+		background: var(--sidebar-bg);
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		padding: 0.6rem 0.75rem;
+		box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+		z-index: 10;
+		width: max-content;
+		max-width: min(360px, 90vw);
 	}
 
 	.curl-code {
 		font-family: monospace;
 		font-size: 0.76rem;
-		background: var(--bg);
-		border: 1px solid var(--border);
-		border-radius: 6px;
-		padding: 0.5rem 0.7rem;
 		color: var(--text);
 		white-space: pre-wrap;
 		word-break: break-all;
 		display: block;
+		margin: 0;
 	}
 </style>
