@@ -26,8 +26,17 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-	// Let API calls and auth go through the network untouched
-	if (event.request.url.includes('/api/')) return;
+	// Only intercept GET requests — PUT/POST/DELETE must reach the network directly.
+	if (event.request.method !== 'GET') return;
+
+	const url = event.request.url;
+	// Dynamic content must never be served from cache: note list, note content,
+	// API endpoints, backlinks, and auth. Serving stale note data from cache
+	// causes newly-created notes to appear empty and missing from the sidebar.
+	if (url.includes('/notes') ||
+		url.includes('/api/') ||
+		url.includes('/backlinks/') ||
+		url.includes('/auth')) return;
 
 	event.respondWith(
 		(async () => {
