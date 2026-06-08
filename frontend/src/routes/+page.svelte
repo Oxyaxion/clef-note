@@ -123,15 +123,9 @@
 		const mqHandler = (e: MediaQueryListEvent) => { isMobile = e.matches; };
 		mq.addEventListener('change', mqHandler);
 
-		// When the service worker is updated and claims this tab, reload so the
-		// page runs the new SW immediately instead of needing a second manual refresh.
-		const swReload = async () => { try { await autoSave.flush(); } catch {} window.location.reload(); };
-		navigator.serviceWorker?.addEventListener('controllerchange', swReload);
-
 		return () => {
 			offAuth();
 			mq.removeEventListener('change', mqHandler);
-			navigator.serviceWorker?.removeEventListener('controllerchange', swReload);
 		};
 	});
 
