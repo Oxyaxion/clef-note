@@ -170,6 +170,12 @@
 		loadCtrl?.abort();
 		loadCtrl = new AbortController();
 		loadError = null;
+		// If the flush above is writing this exact note, wait for the write to land
+		// before reading it back — otherwise getNote races the PUT and sees stale
+		// content (empty for brand-new notes, previous version for existing ones).
+		// waitForNote() resolves immediately for any other note, so there is no
+		// penalty for normal navigation between different notes.
+		await autoSave.waitForNote(name);
 		try {
 			const note = await getNote(name, loadCtrl.signal);
 			noteFrontmatter = (note.frontmatter ?? {}) as Frontmatter;

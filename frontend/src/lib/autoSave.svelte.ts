@@ -13,12 +13,14 @@ export function createAutoSave(onSuccess: (name: string, fm: Frontmatter) => voi
 	// The edit waiting to be persisted. Kept so a pending save can be flushed
 	// (e.g. on note switch) instead of silently dropped.
 	let pending: Pending | null = null;
-	// Promise for a timer-triggered persist that may still be in-flight when
-	// flush() is called. Without this, flush() returns immediately and the
-	// caller (e.g. toggleRawView) races getNote against the write.
+	// Promise for a persist that may still be in-flight, and the name of the
+	// note being written. Both are needed so callers can gate a getNote on the
+	// matching write (see waitForNote), avoiding a read-before-write race.
 	let inflight: Promise<void> | null = null;
+	let inflightName: string | null = null;
 
 	async function persist(p: Pending) {
+		inflightName = p.name;
 		saving = true;
 		saveFailed = false;
 		try {
@@ -30,6 +32,8 @@ export function createAutoSave(onSuccess: (name: string, fm: Frontmatter) => voi
 			saveFailed = true;
 		} finally {
 			saving = false;
+			inflightName = null;
+			inflight = null;
 		}
 	}
 
@@ -73,6 +77,16 @@ export function createAutoSave(onSuccess: (name: string, fm: Frontmatter) => voi
 		return inflight ?? Promise.resolve();
 	}
 
+	/**
+	 * If a write for `name` is currently in-flight, returns that promise so the
+	 * caller can await it before issuing a getNote. Returns immediately for any
+	 * other note, keeping navigation to different notes penalty-free.
+	 */
+	function waitForNote(name: string): Promise<void> {
+		if (inflightName === name && inflight) return inflight;
+		return Promise.resolve();
+	}
+
 	return {
 		get saving() { return saving; },
 		get saveFailed() { return saveFailed; },
@@ -80,5 +94,6 @@ export function createAutoSave(onSuccess: (name: string, fm: Frontmatter) => voi
 		scheduleRaw,
 		cancel,
 		flush,
+		waitForNote,
 	};
 }
