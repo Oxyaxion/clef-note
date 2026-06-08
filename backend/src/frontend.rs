@@ -12,15 +12,31 @@ pub async fn handler(uri: axum::http::Uri) -> Response {
     match Asset::get(path) {
         Some(content) => Response::builder()
             .header(header::CONTENT_TYPE, mime_for_path(path))
+            .header(header::CACHE_CONTROL, cache_control(path))
             .body(Body::from(content.data))
             .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response()),
         None => match Asset::get("index.html") {
             Some(content) => Response::builder()
                 .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+                .header(header::CACHE_CONTROL, "no-cache")
                 .body(Body::from(content.data))
                 .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response()),
             None => StatusCode::NOT_FOUND.into_response(),
         },
+    }
+}
+
+fn cache_control(path: &str) -> &'static str {
+    if path.starts_with("_app/immutable/") {
+        // Content-hashed filenames — safe to cache forever.
+        "public, max-age=31536000, immutable"
+    } else if path == "service-worker.js" || path.ends_with(".html") {
+        // The browser must always re-validate the SW script so it detects
+        // new versions immediately. Same for HTML entry points.
+        "no-cache"
+    } else {
+        // Manifest, icons, and other static files: short cache.
+        "public, max-age=3600"
     }
 }
 
