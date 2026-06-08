@@ -310,9 +310,10 @@
 		}
 		if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey) {
 			if (e.code === 'KeyH') { e.preventDefault(); goHome(); }
-			else if (e.code === 'KeyP') { e.preventDefault(); goBack(); }
+			else if (e.code === 'KeyL') { e.preventDefault(); goBack(); }
 			else if (e.code === 'KeyN') { e.preventDefault(); goForward(); }
 			else if (e.code === 'KeyF') { e.preventDefault(); focusMode = !focusMode; }
+			else if (e.code === 'KeyM') { e.preventDefault(); toggleRawView(); }
 		}
 	}
 </script>

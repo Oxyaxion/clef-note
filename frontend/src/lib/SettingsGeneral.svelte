@@ -60,7 +60,7 @@
 			/>
 		</div>
 		<p class="section-desc">
-			Shortcuts: <kbd>Ctrl+Shift+H</kbd> home · <kbd>Ctrl+Shift+P</kbd> back · <kbd>Ctrl+Shift+N</kbd> forward
+			Shortcuts: <kbd>Ctrl+Shift+H</kbd> home · <kbd>Ctrl+Shift+L</kbd> back · <kbd>Ctrl+Shift+N</kbd> forward · <kbd>Ctrl+Shift+M</kbd> markdown source
 		</p>
 	</div>
 </section>
