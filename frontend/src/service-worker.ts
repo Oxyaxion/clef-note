@@ -20,7 +20,22 @@ self.addEventListener('activate', (event) => {
 			for (const key of keys) {
 				if (key !== CACHE) await caches.delete(key);
 			}
-			self.clients.claim();
+			// Purge any dynamic-content entries that an older SW version may have
+			// cached under the current key (e.g. /notes responses).
+			const cache = await caches.open(CACHE);
+			for (const req of await cache.keys()) {
+				const p = new URL(req.url).pathname;
+				if (p.startsWith('/notes') || p.startsWith('/api/') ||
+					p.startsWith('/backlinks/') || p.startsWith('/auth')) {
+					await cache.delete(req);
+				}
+			}
+			await self.clients.claim();
+			// Tell open tabs to reload so they pick up the new SW immediately
+			// instead of needing a manual second refresh.
+			for (const client of await self.clients.matchAll({ type: 'window' })) {
+				client.postMessage({ type: 'SW_UPDATED' });
+			}
 		})
 	);
 });
