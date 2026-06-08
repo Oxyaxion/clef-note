@@ -13,6 +13,10 @@ export function createAutoSave(onSuccess: (name: string, fm: Frontmatter) => voi
 	// The edit waiting to be persisted. Kept so a pending save can be flushed
 	// (e.g. on note switch) instead of silently dropped.
 	let pending: Pending | null = null;
+	// Promise for a timer-triggered persist that may still be in-flight when
+	// flush() is called. Without this, flush() returns immediately and the
+	// caller (e.g. toggleRawView) races getNote against the write.
+	let inflight: Promise<void> | null = null;
 
 	async function persist(p: Pending) {
 		saving = true;
@@ -36,7 +40,7 @@ export function createAutoSave(onSuccess: (name: string, fm: Frontmatter) => voi
 			timer = null;
 			const p = pending;
 			pending = null;
-			if (p) persist(p);
+			if (p) inflight = persist(p);
 		}, 800);
 	}
 
@@ -60,7 +64,13 @@ export function createAutoSave(onSuccess: (name: string, fm: Frontmatter) => voi
 		if (timer) { clearTimeout(timer); timer = null; }
 		const p = pending;
 		pending = null;
-		return p ? persist(p) : Promise.resolve();
+		if (p) {
+			inflight = persist(p);
+			return inflight;
+		}
+		// If the debounce timer already fired and persist is in-flight, wait for it
+		// so callers don't race a getNote against an unfinished write.
+		return inflight ?? Promise.resolve();
 	}
 
 	return {
