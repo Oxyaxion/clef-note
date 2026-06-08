@@ -19,7 +19,8 @@ mod sync;
 use std::sync::Arc;
 
 use axum::{
-    Json, Router, extract::State, http::StatusCode, middleware,
+    Json, Router, extract::{Request, State}, http::{StatusCode, header},
+    middleware::{self, Next}, response::Response,
     routing::{delete, get, post},
 };
 use tower_http::cors::{Any, CorsLayer};
@@ -174,6 +175,19 @@ fn start_share_purge_task(state: &Arc<AppState>) {
     });
 }
 
+// ── No-cache middleware ───────────────────────────────────────────────────────
+
+/// Add Cache-Control: no-store to every response on dynamic routes so that
+/// nginx, Authelia, and the browser HTTP cache never serve stale note data.
+async fn no_cache(request: Request, next: Next) -> Response {
+    let mut response = next.run(request).await;
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        "no-store".parse().expect("valid header value"),
+    );
+    response
+}
+
 // ── Sync API handlers ─────────────────────────────────────────────────────────
 
 async fn get_sync_status(State(state): State<Arc<AppState>>) -> Json<sync::SyncStatus> {
@@ -225,7 +239,8 @@ async fn run_server(state: Arc<AppState>, port: u16) {
         .route("/api/shares", get(shares::list_shares).post(shares::create_share))
         .route("/api/shares/{slug}", delete(shares::delete_share).patch(shares::update_share))
         .route("/auth/logout", post(auth::logout))
-        .layer(middleware::from_fn_with_state(state.clone(), auth::middleware));
+        .layer(middleware::from_fn_with_state(state.clone(), auth::middleware))
+        .layer(middleware::from_fn(no_cache));
 
     // Public — no auth
     let app = Router::new()
