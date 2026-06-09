@@ -203,7 +203,7 @@ Notes live inside named partition sub-directories. A default `notes` partition i
 /home/user/
   clef-note.toml            ← global config (password, tokens) — never git-tracked
 
-/home/user/notes/           ← --partitions root
+/home/user/clef-notes/      ← --partitions root
   settings.json             ← global UI settings (theme, font, …)
   notes/                    ← partition "Notes" (created on first run)
     partition.toml
@@ -309,7 +309,7 @@ Each partition can be synced to a separate remote. The git token is kept in `cle
 **Step 1 — add the sync block to `partition.toml`** (inside the partition folder, safe to commit):
 
 ```toml
-# /home/user/notes/work/partition.toml
+# /home/user/clef-notes/work/partition.toml
 name = "Work"
 
 [sync]
@@ -339,7 +339,7 @@ work  = "ghp_work_token_yyyy"
 /home/user/
   clef-note.toml               ← password + tokens (chmod 600)
 
-/home/user/notes/              ← --partitions root
+/home/user/clef-notes/              ← --partitions root
   notes/
     partition.toml             ← name="Notes", sync→github.com/you/personal-notes
     Journal.md
