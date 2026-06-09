@@ -81,6 +81,8 @@ cd ../backend && cargo build --release
 
 No Node.js needed at runtime — `clef-note` is self-contained.
 
+> **HTTPS / internet exposure** — clef-note speaks plain HTTP only. If you expose it on the internet, put it behind a reverse proxy that handles TLS termination (Caddy, nginx, Traefik, …). Never expose port 3000 directly.
+
 ### Development
 
 Run the backend and frontend in two separate terminals:
@@ -120,7 +122,7 @@ sudo systemctl enable --now clef-note
 sudo journalctl -u clef-note -f    # follow logs
 ```
 
-The `clef-note` binary serves both the frontend and the API on port `3000` — no nginx, no Node.js required in production.
+The `clef-note` binary serves both the frontend and the API on port `3000` — no Node.js required at runtime. For internet-facing deployments, use a reverse proxy (Caddy, nginx, …) for TLS termination.
 
 ### FreeBSD rc.d service
 
