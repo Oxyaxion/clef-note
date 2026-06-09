@@ -16,6 +16,7 @@
 		deleteNote,
 		getSettings,
 		listPartitions,
+		renamePartition,
 		serializeFrontmatter,
 		session,
 		logout,
@@ -349,6 +350,11 @@
 		partitions = partitions.filter(p => p.slug !== slug);
 	}
 
+	async function handlePartitionRenamed(name: string) {
+		await renamePartition(activePartitionSlug, name);
+		partitions = partitions.map(p => p.active ? { ...p, name } : p);
+	}
+
 	function onGlobalKeydown(e: KeyboardEvent) {
 		if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
 			e.preventDefault();
@@ -396,6 +402,7 @@
 		onClose={() => (settingsOpen = false)}
 		onLogout={async () => { await logout(); loggedIn = false; }}
 		{onSettingsChange}
+		onRenamePartition={handlePartitionRenamed}
 	/>
 {/if}
 

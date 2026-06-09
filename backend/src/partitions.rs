@@ -9,7 +9,7 @@ use crate::{AppState, config::SyncConfig, db::Db, sync};
 
 pub struct PartitionState {
     pub slug: String,
-    pub name: String,
+    pub name: std::sync::RwLock<String>,
     pub storage_path: PathBuf,
     pub db: Arc<Db>,
     pub backlink_index: tokio::sync::RwLock<crate::backlinks::BacklinkIndex>,
@@ -34,6 +34,11 @@ pub struct SwitchRequest {
 
 #[derive(Deserialize)]
 pub struct CreateRequest {
+    pub name: String,
+}
+
+#[derive(Deserialize)]
+pub struct RenameRequest {
     pub name: String,
 }
 
@@ -107,7 +112,7 @@ pub async fn init(
 
     PartitionState {
         slug,
-        name,
+        name: std::sync::RwLock::new(name),
         storage_path,
         db,
         backlink_index: tokio::sync::RwLock::new(backlink_index),
@@ -147,7 +152,7 @@ pub async fn list_partitions(State(state): State<Arc<AppState>>) -> Json<Vec<Par
         .values()
         .map(|p| PartitionInfo {
             slug: p.slug.clone(),
-            name: p.name.clone(),
+            name: p.name.read().unwrap().clone(),
             active: p.slug == active,
             has_sync: p.sync_config.is_some(),
         })
@@ -206,6 +211,58 @@ pub async fn create_partition(
     state.partitions.write().await.insert(slug, Arc::new(partition));
 
     Ok(Json(info))
+}
+
+pub async fn rename_partition(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Path(slug): axum::extract::Path<String>,
+    Json(body): Json<RenameRequest>,
+) -> StatusCode {
+    let name = body.name.trim().to_string();
+    if name.is_empty() {
+        return StatusCode::BAD_REQUEST;
+    }
+
+    let partition = {
+        let partitions = state.partitions.read().await;
+        match partitions.get(&slug) {
+            Some(p) => p.clone(),
+            None => return StatusCode::NOT_FOUND,
+        }
+    };
+
+    // Update partition.toml, preserving any [sync] section below the name line.
+    let toml_path = partition.storage_path.join("partition.toml");
+    let current = tokio::fs::read_to_string(&toml_path).await.unwrap_or_default();
+    let new_name_line = format!("name = \"{}\"", name.replace('"', "\\\""));
+    let mut replaced = false;
+    let mut lines: Vec<String> = current
+        .lines()
+        .map(|l| {
+            if !replaced {
+                let t = l.trim_start();
+                if t.starts_with("name") && t["name".len()..].trim_start().starts_with('=') {
+                    replaced = true;
+                    return new_name_line.clone();
+                }
+            }
+            l.to_string()
+        })
+        .collect();
+    if !replaced {
+        lines.insert(0, new_name_line);
+    }
+    let mut updated = lines.join("\n");
+    if current.ends_with('\n') {
+        updated.push('\n');
+    }
+
+    if tokio::fs::write(&toml_path, updated).await.is_err() {
+        return StatusCode::INTERNAL_SERVER_ERROR;
+    }
+
+    *partition.name.write().unwrap() = name;
+    StatusCode::NO_CONTENT
 }
 
 pub async fn delete_partition(

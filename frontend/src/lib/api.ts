@@ -382,6 +382,15 @@ export async function createPartition(name: string): Promise<PartitionInfo> {
     return res.json();
 }
 
+export async function renamePartition(slug: string, name: string): Promise<void> {
+    const res = await apiFetch(`${BASE}/api/partitions/${encodeURIComponent(slug)}`, {
+        method: 'PATCH',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ name }),
+    });
+    if (!res.ok) throw new Error('Failed to rename partition');
+}
+
 export async function deletePartition(slug: string): Promise<void> {
     const res = await apiFetch(`${BASE}/api/partitions/${encodeURIComponent(slug)}`, {
         method: 'DELETE',

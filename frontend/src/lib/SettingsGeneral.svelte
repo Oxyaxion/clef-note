@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { DATE_FORMATS, PARTITION_DEFAULTS, type AppSettings } from './settings';
 
 	interface Props {
@@ -6,9 +7,31 @@
 		activePartitionSlug?: string;
 		activePartitionName?: string;
 		onChange: () => void;
+		onRenamePartition?: (name: string) => Promise<void>;
 	}
 
-	let { settings = $bindable(), activePartitionSlug = '', activePartitionName = '', onChange }: Props = $props();
+	let { settings = $bindable(), activePartitionSlug = '', activePartitionName = '', onChange, onRenamePartition }: Props = $props();
+
+	let partitionNameDraft = $state(untrack(() => activePartitionName));
+	$effect(() => { partitionNameDraft = activePartitionName; });
+
+	async function commitRename() {
+		const trimmed = partitionNameDraft.trim();
+		if (!trimmed || trimmed === activePartitionName) {
+			partitionNameDraft = activePartitionName;
+			return;
+		}
+		try {
+			await onRenamePartition?.(trimmed);
+		} catch {
+			partitionNameDraft = activePartitionName;
+		}
+	}
+
+	function onPartitionNameKeydown(e: KeyboardEvent) {
+		if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+		if (e.key === 'Escape') { partitionNameDraft = activePartitionName; (e.target as HTMLInputElement).blur(); }
+	}
 
 	function onHomeInput(e: Event) {
 		const val = (e.target as HTMLInputElement).value;
@@ -24,6 +47,19 @@
 <section>
 	<h3 class="section-title">General</h3>
 	<div class="section-content">
+		{#if activePartitionSlug}
+		<div class="setting-row">
+			<span class="setting-label">Partition name</span>
+			<input
+				class="text-input"
+				type="text"
+				bind:value={partitionNameDraft}
+				onblur={commitRename}
+				onkeydown={onPartitionNameKeydown}
+				autocomplete="off"
+			/>
+		</div>
+		{/if}
 		<div class="setting-row">
 			<span class="setting-label home-label">
 				<span class="home-label-main">

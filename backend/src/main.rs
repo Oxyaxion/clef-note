@@ -23,7 +23,7 @@ use std::{collections::HashMap, sync::Arc};
 use axum::{
     Json, Router, extract::{Request, State}, http::{StatusCode, header},
     middleware::{self, Next}, response::Response,
-    routing::{delete, get, post},
+    routing::{delete, get, patch, post},
 };
 use tower_http::cors::{Any, CorsLayer};
 
@@ -289,7 +289,7 @@ async fn run_server(state: Arc<AppState>, port: u16) {
         .route("/api/shares/{slug}", delete(shares::delete_share).patch(shares::update_share))
         .route("/api/partitions", get(partitions::list_partitions).post(partitions::create_partition))
         .route("/api/partitions/active", post(partitions::switch_partition))
-        .route("/api/partitions/{slug}", delete(partitions::delete_partition))
+        .route("/api/partitions/{slug}", patch(partitions::rename_partition).delete(partitions::delete_partition))
         .route("/auth/logout", post(auth::logout))
         .layer(middleware::from_fn_with_state(state.clone(), auth::middleware))
         .layer(middleware::from_fn(no_cache));

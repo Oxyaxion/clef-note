@@ -14,10 +14,11 @@
 		onClose: () => void;
 		onLogout: () => void;
 		onSettingsChange?: (s: AppSettings) => void;
+		onRenamePartition?: (name: string) => Promise<void>;
 		initialSettings?: AppSettings;
 	}
 
-	let { activePartitionSlug = '', activePartitionName = '', onClose, onLogout, onSettingsChange, initialSettings = DEFAULT }: Props = $props();
+	let { activePartitionSlug = '', activePartitionName = '', onClose, onLogout, onSettingsChange, onRenamePartition, initialSettings = DEFAULT }: Props = $props();
 
 	let settings = $state<AppSettings>({ ...untrack(() => initialSettings) });
 	const debouncedSave = debounce(() => putSettings(settings), 400);
@@ -62,7 +63,7 @@
 		</div>
 
 		<div class="modal-body">
-			<SettingsGeneral bind:settings {activePartitionSlug} {activePartitionName} {onChange} />
+			<SettingsGeneral bind:settings {activePartitionSlug} {activePartitionName} {onChange} {onRenamePartition} />
 			<SettingsAppearance bind:settings {activePartitionSlug} {activePartitionName} {onChange} {onReset} />
 			<SettingsSecurity />
 			<SettingsSync />
