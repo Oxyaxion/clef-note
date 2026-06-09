@@ -70,8 +70,10 @@
 				<div class="shortcuts-title">Keyboard shortcuts</div>
 				<ul class="shortcuts-list">
 					<li><kbd>Ctrl+Shift+H</kbd> Home page</li>
+					<li><kbd>Ctrl+Shift+C</kbd> New note</li>
 					<li><kbd>Ctrl+Shift+L</kbd> Go back</li>
 					<li><kbd>Ctrl+Shift+N</kbd> Go forward</li>
+					<li><kbd>Ctrl+Shift+F</kbd> Focus mode</li>
 					<li><kbd>Ctrl+Shift+M</kbd> Markdown source</li>
 				</ul>
 			</div>

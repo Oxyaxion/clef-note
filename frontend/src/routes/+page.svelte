@@ -361,6 +361,7 @@
 			else if (e.code === 'KeyN') { e.preventDefault(); goForward(); }
 			else if (e.code === 'KeyF') { e.preventDefault(); focusMode = !focusMode; }
 			else if (e.code === 'KeyM') { e.preventDefault(); toggleRawView(); }
+			else if (e.code === 'KeyC') { e.preventDefault(); creatingFromPalette = true; sidebarOpen = true; }
 		}
 	}
 </script>

@@ -429,12 +429,15 @@ The REST API is documented in **[API.md](API.md)**, including:
 
 ### Navigation
 
-| Shortcut       | Action                                              |
-|----------------|-----------------------------------------------------|
-| `Ctrl+K`         | Open command palette                          |
-| `Ctrl+Shift+H`   | Go to home page (set in Settings → General)   |
-| `Ctrl+Shift+P`   | Navigate back in history                      |
-| `Ctrl+Shift+N`   | Navigate forward in history                   |
+| Shortcut         | Action                                            |
+|------------------|---------------------------------------------------|
+| `Ctrl+K`         | Open command palette                              |
+| `Ctrl+Shift+H`   | Go to home page (set in Settings → General)       |
+| `Ctrl+Shift+C`   | Create a new note                                 |
+| `Ctrl+Shift+L`   | Navigate back in history                          |
+| `Ctrl+Shift+N`   | Navigate forward in history                       |
+| `Ctrl+Shift+F`   | Toggle focus mode                                 |
+| `Ctrl+Shift+M`   | Toggle markdown source view                       |
 
 ### Editor
 
