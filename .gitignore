@@ -1,5 +1,6 @@
 CLAUDE.md
 storage/
+storagen/
 partitions/
 aura_notes.toml
 frontend/.env.local
