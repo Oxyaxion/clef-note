@@ -173,7 +173,7 @@ password = "$argon2id$v=19$..."
 # Git sync tokens — one entry per partition (folder name = key).
 # Kept here, outside all partition directories, so tokens are never
 # accidentally committed to a git repository.
-# [partition_tokens]
+# [partition_git_tokens]
 # notes = "ghp_xxxx"
 # work  = "ghp_yyyy"
 

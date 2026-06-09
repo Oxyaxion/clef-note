@@ -42,7 +42,7 @@ author_email     = "sync@local"
 # /home/user/clef-note.toml
 password = "$argon2id$..."
 
-[partition_tokens]
+[partition_git_tokens]
 notes = "ghp_personal_token_xxxx"   # key = partition folder name
 work  = "ghp_work_token_yyyy"
 ```
@@ -71,7 +71,7 @@ work  = "ghp_work_token_yyyy"
 # clef-note.toml
 password = "$argon2id$..."
 
-[partition_tokens]
+[partition_git_tokens]
 notes = "ghp_personal_xxxx"
 work  = "ghp_work_yyyy"
 ```

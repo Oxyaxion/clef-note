@@ -179,7 +179,7 @@ fn commit_if_changed(
 
 fn do_fetch(repo: &Repository, cfg: &SyncConfig) -> Result<(), git2::Error> {
     let mut remote = repo.find_remote("origin")?;
-    let mut opts = fetch_opts(cfg.token.clone());
+    let mut opts = fetch_opts(cfg.token.clone().unwrap_or_default());
     remote.fetch(&[cfg.branch.as_str()], Some(&mut opts), None)?;
     Ok(())
 }
@@ -207,7 +207,7 @@ fn apply_fast_forward(
 fn do_push(repo: &Repository, cfg: &SyncConfig) -> Result<(), git2::Error> {
     let mut remote = repo.find_remote("origin")?;
     let refspec = format!("refs/heads/{}:refs/heads/{}", cfg.branch, cfg.branch);
-    let mut opts = push_opts(cfg.token.clone());
+    let mut opts = push_opts(cfg.token.clone().unwrap_or_default());
     remote.push(&[refspec.as_str()], Some(&mut opts))?;
     Ok(())
 }
@@ -315,7 +315,8 @@ fn resolve_conflicts(
 // ── Main sync logic ───────────────────────────────────────────────────────────
 
 fn sync_blocking(cfg: &SyncConfig, storage: &Path) -> Result<(), String> {
-    let e = |err: git2::Error| sanitize(&err.to_string(), &cfg.token);
+    let token_ref = cfg.token.as_deref().unwrap_or("");
+    let e = |err: git2::Error| sanitize(&err.to_string(), token_ref);
 
     let repo = open_or_init(storage).map_err(e)?;
     ensure_gitignore(storage);
@@ -327,7 +328,7 @@ fn sync_blocking(cfg: &SyncConfig, storage: &Path) -> Result<(), String> {
     commit_if_changed(&repo, cfg, &format!("sync: {ts}")).map_err(e)?;
 
     // 2. Fetch remote.
-    do_fetch(&repo, cfg).map_err(|err| sanitize(&err.to_string(), &cfg.token))?;
+    do_fetch(&repo, cfg).map_err(|err| sanitize(&err.to_string(), token_ref))?;
 
     // 3. Integrate remote changes.
     if let Some(remote_oid) = remote_tip_oid(&repo, &cfg.branch) {
@@ -363,7 +364,7 @@ fn sync_blocking(cfg: &SyncConfig, storage: &Path) -> Result<(), String> {
     }
 
     // 4. Push local commits to remote.
-    do_push(&repo, cfg).map_err(|err| sanitize(&err.to_string(), &cfg.token))?;
+    do_push(&repo, cfg).map_err(|err| sanitize(&err.to_string(), token_ref))?;
     info!("sync: pushed to remote/{}", cfg.branch);
 
     Ok(())

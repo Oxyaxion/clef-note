@@ -23,7 +23,7 @@ password = ""
 # Git sync tokens — one entry per partition slug.
 # The token is kept here (outside any partition directory) so it is never
 # accidentally committed to a git repository.
-# [partition_tokens]
+# [partition_git_tokens]
 # notes = "ghp_xxxx"
 # work  = "ghp_yyyy"
 
@@ -69,7 +69,8 @@ impl fmt::Debug for OidcConfig {
 pub struct SyncConfig {
     pub remote: String,
     pub branch: String,
-    pub token: String,
+    #[serde(default)]
+    pub token: Option<String>,
     pub interval_minutes: Option<u64>,
     pub author_name: Option<String>,
     pub author_email: Option<String>,
@@ -93,7 +94,7 @@ pub struct Config {
     pub partitions: Option<String>,
     pub port: Option<u16>,
     pub api_key: Option<String>,
-    pub partition_tokens: Option<std::collections::HashMap<String, String>>,
+    pub partition_git_tokens: Option<std::collections::HashMap<String, String>>,
     pub sync: Option<SyncConfig>,
     pub oidc: Option<OidcConfig>,
 }
@@ -160,7 +161,7 @@ pub fn load(storage_path: &std::path::Path) -> Config {
     }
 
     if let Some(sync) = &cfg.sync {
-        if sync.remote.trim().is_empty() || sync.token.trim().is_empty() || sync.branch.trim().is_empty() {
+        if sync.remote.trim().is_empty() || sync.token.as_deref().map_or(true, |t| t.trim().is_empty()) || sync.branch.trim().is_empty() {
             eprintln!("error: [sync] requires remote, branch, and token to be set");
             std::process::exit(1);
         }

@@ -99,7 +99,7 @@ async fn setup_state() -> (AppState, u16) {
     // settings.json lives at the partitions root (global, never inside a vault)
     // No vault-specific init needed here.
 
-    let partition_tokens = cfg.partition_tokens.clone().unwrap_or_default();
+    let partition_tokens = cfg.partition_git_tokens.clone().unwrap_or_default();
     let discovered = partitions::discover(&root_path, &partition_tokens).await;
 
     if discovered.is_empty() {

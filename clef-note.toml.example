@@ -23,7 +23,7 @@ password = "$argon2id$v=19$..."
 # accidentally committed to a git repository.
 # Configure the [sync] block in each partition's partition.toml for remote/branch/interval.
 #
-# [partition_tokens]
+# [partition_git_tokens]
 # notes = "ghp_xxxx"
 # work  = "ghp_yyyy"
 

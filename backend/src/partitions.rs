@@ -77,7 +77,7 @@ pub async fn discover(
         let mut sync_cfg = partition_cfg.sync;
         if let Some(ref mut sync) = sync_cfg {
             if let Some(token) = partition_tokens.get(&slug) {
-                sync.token = token.clone();
+                sync.token = Some(token.clone());
             }
         }
         let partition = init(slug, name, path, sync_cfg).await;
