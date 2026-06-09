@@ -1,8 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import { applySettings, DEFAULT, type AppSettings } from './settings';
+	import { applySettings, activePartitionSettings, DEFAULT, type AppSettings } from './settings';
 	import { putSettings } from './api';
-	import { type ThemeId } from './theme';
 	import { debounce } from './utils';
 	import SettingsGeneral from './SettingsGeneral.svelte';
 	import SettingsAppearance from './SettingsAppearance.svelte';
@@ -10,17 +9,15 @@
 	import SettingsSync from './SettingsSync.svelte';
 
 	interface Props {
-		currentTheme: ThemeId;
 		activePartitionSlug?: string;
 		activePartitionName?: string;
 		onClose: () => void;
-		onSetTheme: (id: ThemeId) => void;
 		onLogout: () => void;
 		onSettingsChange?: (s: AppSettings) => void;
 		initialSettings?: AppSettings;
 	}
 
-	let { currentTheme, activePartitionSlug = '', activePartitionName = '', onClose, onSetTheme, onLogout, onSettingsChange, initialSettings = DEFAULT }: Props = $props();
+	let { activePartitionSlug = '', activePartitionName = '', onClose, onLogout, onSettingsChange, initialSettings = DEFAULT }: Props = $props();
 
 	let settings = $state<AppSettings>({ ...untrack(() => initialSettings) });
 	const debouncedSave = debounce(() => putSettings(settings), 400);
@@ -30,14 +27,14 @@
 	}
 
 	function onChange() {
-		applySettings(settings);
+		applySettings(settings, activePartitionSettings(settings, activePartitionSlug));
 		onSettingsChange?.(settings);
 		debouncedSave();
 	}
 
 	function onReset() {
 		settings = { ...DEFAULT };
-		applySettings(settings);
+		applySettings(settings, {});
 		onSettingsChange?.(settings);
 		putSettings(settings);
 	}
@@ -66,7 +63,7 @@
 
 		<div class="modal-body">
 			<SettingsGeneral bind:settings {activePartitionSlug} {activePartitionName} {onChange} />
-			<SettingsAppearance bind:settings {currentTheme} {onSetTheme} {onChange} {onReset} />
+			<SettingsAppearance bind:settings {activePartitionSlug} {activePartitionName} {onChange} {onReset} />
 			<SettingsSecurity />
 			<SettingsSync />
 		</div>

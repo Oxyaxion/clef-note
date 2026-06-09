@@ -1,21 +1,34 @@
 <script lang="ts">
-	import { THEMES, type ThemeId } from './theme';
-	import { FONT_PRESETS, type AppSettings } from './settings';
+	import { THEMES } from './theme';
+	import { FONT_PRESETS, PARTITION_DEFAULTS, type AppSettings, type PartitionSettings } from './settings';
 
 	interface Props {
 		settings: AppSettings;
-		currentTheme: ThemeId;
-		onSetTheme: (id: ThemeId) => void;
+		activePartitionSlug?: string;
+		activePartitionName?: string;
 		onChange: () => void;
 		onReset: () => void;
 	}
 
-	let { settings = $bindable(), currentTheme, onSetTheme, onChange, onReset }: Props = $props();
+	let { settings = $bindable(), activePartitionSlug = '', activePartitionName = '', onChange, onReset }: Props = $props();
 
 	let open = $state(true);
 
+	function ps(): PartitionSettings {
+		return settings.partitions?.[activePartitionSlug] ?? {};
+	}
+
+	function setPs<K extends keyof PartitionSettings>(key: K, val: PartitionSettings[K]) {
+		if (!activePartitionSlug) return;
+		settings.partitions = {
+			...settings.partitions,
+			[activePartitionSlug]: { ...ps(), [key]: val },
+		};
+		onChange();
+	}
+
 	function activeFontId(): string {
-		return FONT_PRESETS.find(f => f.value === settings.fontFamily)?.id ?? 'custom';
+		return FONT_PRESETS.find(f => f.value === (ps().fontFamily ?? PARTITION_DEFAULTS.fontFamily))?.id ?? 'custom';
 	}
 </script>
 
@@ -28,14 +41,19 @@
 	</button>
 	{#if open}
 	<div class="section-content">
+
+		{#if activePartitionName}
+			<div class="scope-label">Per partition · <strong>{activePartitionName}</strong></div>
+		{/if}
+
 		<div class="setting-row">
 			<span class="setting-label">Theme</span>
 			<div class="btn-group">
 				{#each THEMES as t}
 					<button
 						class="option-btn"
-						class:active={currentTheme === t.id}
-						onclick={() => onSetTheme(t.id)}
+						class:active={(ps().theme ?? PARTITION_DEFAULTS.theme) === t.id}
+						onclick={() => setPs('theme', t.id)}
 					>{t.label}</button>
 				{/each}
 			</div>
@@ -49,7 +67,7 @@
 						class="option-btn"
 						class:active={activeFontId() === f.id}
 						style="font-family: {f.value};"
-						onclick={() => { settings.fontFamily = f.value; onChange(); }}
+						onclick={() => setPs('fontFamily', f.value)}
 					>{f.label}</button>
 				{/each}
 			</div>
@@ -58,15 +76,15 @@
 		<div class="setting-row">
 			<span class="setting-label">
 				Font size
-				<span class="setting-value">{settings.fontSize.toFixed(2)}rem</span>
+				<span class="setting-value">{(ps().fontSize ?? PARTITION_DEFAULTS.fontSize).toFixed(2)}rem</span>
 			</span>
 			<div class="slider-wrap">
 				<span class="slider-bound">A</span>
 				<input
 					type="range"
 					min="0.85" max="1.35" step="0.05"
-					bind:value={settings.fontSize}
-					oninput={onChange}
+					value={ps().fontSize ?? PARTITION_DEFAULTS.fontSize}
+					oninput={(e) => setPs('fontSize', parseFloat((e.target as HTMLInputElement).value))}
 					class="slider"
 				/>
 				<span class="slider-bound large">A</span>
@@ -76,20 +94,22 @@
 		<div class="setting-row">
 			<span class="setting-label">
 				Line height
-				<span class="setting-value">{settings.lineHeight.toFixed(1)}</span>
+				<span class="setting-value">{(ps().lineHeight ?? PARTITION_DEFAULTS.lineHeight).toFixed(1)}</span>
 			</span>
 			<div class="slider-wrap">
 				<span class="slider-bound">≡</span>
 				<input
 					type="range"
 					min="1.3" max="2.2" step="0.1"
-					bind:value={settings.lineHeight}
-					oninput={onChange}
+					value={ps().lineHeight ?? PARTITION_DEFAULTS.lineHeight}
+					oninput={(e) => setPs('lineHeight', parseFloat((e.target as HTMLInputElement).value))}
 					class="slider"
 				/>
 				<span class="slider-bound spaced">≡</span>
 			</div>
 		</div>
+
+		<div class="global-divider">Global</div>
 
 		<div class="subsection-title">Custom CSS</div>
 		<p class="section-desc">Injected into the page, applied live.</p>
@@ -155,6 +175,23 @@
 		padding-top: 1rem;
 	}
 
+	.scope-label {
+		font-size: 0.72rem;
+		color: var(--accent);
+		opacity: 0.8;
+		margin-bottom: -0.25rem;
+	}
+
+	.global-divider {
+		font-size: 0.68rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		color: var(--muted);
+		padding-top: 0.5rem;
+		border-top: 1px dashed var(--border);
+	}
+
 	.section-desc {
 		margin: -0.5rem 0 0;
 		font-size: 0.8rem;
@@ -166,8 +203,6 @@
 		font-weight: 600;
 		color: var(--muted);
 		letter-spacing: 0.04em;
-		padding-top: 0.25rem;
-		border-top: 1px dashed var(--border);
 	}
 
 	.section-actions {

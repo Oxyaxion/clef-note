@@ -25,7 +25,8 @@
 		type PartitionInfo,
 	} from '$lib/api';
 	import { loadTheme, applyTheme, type ThemeId } from '$lib/theme';
-	import { applySettings, DEFAULT, type AppSettings } from '$lib/settings';
+	import { applySettings, activePartitionSettings, migrateSettings, PARTITION_DEFAULTS, DEFAULT, type AppSettings } from '$lib/settings';
+	import { putSettings } from '$lib/api';
 	import { setDateFormat } from '$lib/slashCommands';
 	import { emit, on } from '$lib/events';
 	import { isAbortError } from '$lib/utils';
@@ -57,7 +58,6 @@
 	let focusEditorNonce = $state(0); // bumped to auto-focus editor (e.g. after note creation)
 	let isMobile = $state(false);
 	let creatingFromPalette = $state(false);
-	let currentTheme = $state<ThemeId>('default');
 	let partitions = $state<PartitionInfo[]>([]);
 	const activePartitionSlug = $derived(partitions.find(p => p.active)?.slug ?? '');
 	const activePartitionName  = $derived(partitions.find(p => p.active)?.name ?? '');
@@ -67,6 +67,9 @@
 	let metaPageOpen = $state(false);
 	let shareModalOpen = $state(false);
 	let currentSettings = $state<AppSettings>({ ...DEFAULT });
+	const currentTheme = $derived<ThemeId>(
+		(currentSettings.partitions[activePartitionSlug]?.theme ?? PARTITION_DEFAULTS.theme) as ThemeId
+	);
 	const nav = createNavigation();
 	let confirmDialog = $state<{ message: string; onConfirm: () => void } | null>(null);
 	let loadError = $state<string | null>(null);
@@ -133,25 +136,27 @@
 		};
 	});
 
-	// Re-run when loggedIn changes: apply theme saved in localStorage.
+	// Quick-load theme from localStorage to prevent flash before settings arrive.
 	$effect(() => {
 		if (!loggedIn) return;
-		const theme = loadTheme();
-		currentTheme = theme;
-		applyTheme(theme);
+		applyTheme(loadTheme());
 	});
 
-	// Re-run when loggedIn changes: fetch initial notes + settings + vaults.
+	// Re-run when loggedIn changes: fetch initial notes + settings + partitions.
 	$effect(() => {
 		if (!loggedIn) return;
 		Promise.all([listNotes(), getSettings(), listPartitions()]).then(([n, raw, v]) => {
 			notes = n;
 			partitions = v;
-			const s: AppSettings = { ...DEFAULT, ...(raw as Partial<AppSettings>) };
-			currentSettings = s;
-			applySettings(s);
-			setDateFormat(s.dateFormat ?? 'long-en');
-			const home = s.partitions?.[partitions.find(p => p.active)?.slug ?? '']?.homePage?.trim();
+			const slugs = v.map((p: PartitionInfo) => p.slug);
+			const migrated = migrateSettings(raw as Record<string, unknown>, slugs);
+			currentSettings = migrated;
+			const ps = activePartitionSettings(migrated, v.find((p: PartitionInfo) => p.active)?.slug ?? '');
+			applySettings(migrated, ps);
+			setDateFormat(ps.dateFormat ?? PARTITION_DEFAULTS.dateFormat);
+			// Save migrated settings if they were in old format
+			if ('fontFamily' in (raw as object) || 'homePages' in (raw as object)) putSettings(migrated);
+			const home = ps.homePage?.trim();
 			if (home) selectNote(home).catch(() => {});
 		});
 	});
@@ -312,7 +317,8 @@
 
 	function onSettingsChange(s: AppSettings) {
 		currentSettings = s;
-		setDateFormat(s.dateFormat ?? 'long-en');
+		const ps = activePartitionSettings(s, activePartitionSlug);
+		setDateFormat(ps.dateFormat ?? PARTITION_DEFAULTS.dateFormat);
 	}
 
 	async function handlePartitionSwitch(slug: string) {
@@ -325,7 +331,10 @@
 			const [n, v] = await Promise.all([listNotes(), listPartitions()]);
 			notes = n;
 			partitions = v;
-			const home = currentSettings.partitions?.[slug]?.homePage?.trim();
+			const ps = activePartitionSettings(currentSettings, slug);
+			applySettings(currentSettings, ps);
+			setDateFormat(ps.dateFormat ?? PARTITION_DEFAULTS.dateFormat);
+			const home = ps.homePage?.trim();
 			if (home) selectNote(home).catch(() => {});
 		} catch {
 			// ignore — user can retry
@@ -380,12 +389,10 @@
 
 {#if settingsOpen}
 	<Settings
-		{currentTheme}
 		{activePartitionSlug}
 		{activePartitionName}
 		initialSettings={currentSettings}
 		onClose={() => (settingsOpen = false)}
-		onSetTheme={(id) => { currentTheme = id; applyTheme(id); }}
 		onLogout={async () => { await logout(); loggedIn = false; }}
 		{onSettingsChange}
 	/>
@@ -408,7 +415,13 @@
 		onRename={() => (renaming = true)}
 		onDelete={handleDelete}
 		onToggleRaw={toggleRawView}
-		onSetTheme={(id) => { currentTheme = id; applyTheme(id); }}
+		onSetTheme={(id) => {
+				if (!activePartitionSlug) return;
+				const ps = { ...activePartitionSettings(currentSettings, activePartitionSlug), theme: id };
+				currentSettings = { ...currentSettings, partitions: { ...currentSettings.partitions, [activePartitionSlug]: ps } };
+				applySettings(currentSettings, ps);
+				putSettings(currentSettings);
+			}}
 		onSettings={() => (settingsOpen = true)}
 		onMediaLibrary={() => (metaPageOpen = true)}
 		onShare={selected ? () => (shareModalOpen = true) : undefined}

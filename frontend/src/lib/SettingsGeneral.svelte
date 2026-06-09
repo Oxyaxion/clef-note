@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { DATE_FORMATS, type AppSettings } from './settings';
+	import { DATE_FORMATS, PARTITION_DEFAULTS, type AppSettings } from './settings';
 
 	interface Props {
 		settings: AppSettings;
@@ -44,11 +44,23 @@
 			/>
 		</div>
 		<div class="setting-row">
-			<span class="setting-label">Date format</span>
+			<span class="setting-label home-label">
+				<span class="home-label-main">Date format</span>
+				{#if activePartitionName}
+					<span class="home-label-sub">per partition · {activePartitionName}</span>
+				{/if}
+			</span>
 			<select
 				class="select-input"
-				bind:value={settings.dateFormat}
-				onchange={onChange}
+				value={settings.partitions?.[activePartitionSlug]?.dateFormat ?? PARTITION_DEFAULTS.dateFormat}
+				onchange={(e) => {
+					if (!activePartitionSlug) return;
+					settings.partitions = {
+						...settings.partitions,
+						[activePartitionSlug]: { ...settings.partitions?.[activePartitionSlug], dateFormat: (e.target as HTMLSelectElement).value },
+					};
+					onChange();
+				}}
 			>
 				{#each DATE_FORMATS as f}
 					<option value={f.id}>{f.label} — {f.example}</option>
