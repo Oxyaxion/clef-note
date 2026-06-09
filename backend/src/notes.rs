@@ -10,10 +10,8 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use axum::extract::Query as AxumQuery;
-use crate::{db::{NoteMeta, NoteStub}, AppState};
+use crate::{AppState, db::{NoteMeta, NoteStub}, vaults::ActiveVault};
 
-/// Map an error to 500 while logging it — the real cause was previously
-/// discarded by `.map_err(|_| INTERNAL_SERVER_ERROR)`.
 fn to_500<E: std::fmt::Display>(e: E) -> StatusCode {
     tracing::error!("internal error: {e}");
     StatusCode::INTERNAL_SERVER_ERROR
@@ -22,9 +20,7 @@ fn to_500<E: std::fmt::Display>(e: E) -> StatusCode {
 #[derive(Serialize)]
 pub struct NoteContent {
     pub name: String,
-    /// Body only — frontmatter stripped
     pub content: String,
-    /// Parsed frontmatter as JSON object
     pub frontmatter: serde_json::Value,
 }
 
@@ -47,14 +43,18 @@ pub struct StubsQuery {
 fn default_max_bytes() -> usize { 500 }
 
 pub async fn list_stubs(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
+    ActiveVault(vault): ActiveVault,
     AxumQuery(params): AxumQuery<StubsQuery>,
 ) -> Json<Vec<NoteStub>> {
-    Json(state.db.stubs(params.max_bytes))
+    Json(vault.db.stubs(params.max_bytes))
 }
 
-pub async fn get_media_usage(State(state): State<Arc<AppState>>) -> Json<MediaUsage> {
-    let (assets_set, drawings_set) = state.db.get_media_usage();
+pub async fn get_media_usage(
+    State(_state): State<Arc<AppState>>,
+    ActiveVault(vault): ActiveVault,
+) -> Json<MediaUsage> {
+    let (assets_set, drawings_set) = vault.db.get_media_usage();
     let mut used_assets: Vec<String> = assets_set.into_iter().collect();
     let mut used_drawings: Vec<String> = drawings_set.into_iter().collect();
     used_assets.sort();
@@ -68,14 +68,14 @@ pub struct RenameBody {
 }
 
 pub async fn list_notes(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
+    ActiveVault(vault): ActiveVault,
 ) -> Result<Json<Vec<NoteMeta>>, StatusCode> {
-    let db = state.db.clone();
+    let db = vault.db.clone();
     let mut notes: Vec<NoteMeta> = tokio::task::spawn_blocking(move || db.list_all_meta())
         .await
         .map_err(to_500)?;
 
-    // Stable alphabetical sort first, then stable pinned-first
     notes.sort_by(|a, b| a.name.cmp(&b.name));
     notes.sort_by_key(|n| std::cmp::Reverse(n.pinned));
 
@@ -85,8 +85,6 @@ pub async fn list_notes(
 pub(crate) fn is_safe_note_name(name: &str) -> bool {
     !name.is_empty()
         && !name.contains('\\')
-        // Disallow `.`, `..`, and hidden segments (starting with `.`) to prevent
-        // accessing `.assets/`, `.drawings/`, `.git/`, etc.
         && !name.split('/').any(|seg| seg == ".." || seg.starts_with('.'))
 }
 
@@ -104,13 +102,14 @@ pub fn read_mtime(path: &std::path::Path) -> i64 {
 }
 
 pub async fn get_note(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
+    ActiveVault(vault): ActiveVault,
     Path(name): Path<String>,
 ) -> Result<Json<NoteContent>, StatusCode> {
     if !is_safe_note_name(&name) {
         return Err(StatusCode::BAD_REQUEST);
     }
-    let path = note_path(&state.storage_path, &name);
+    let path = note_path(&vault.storage_path, &name);
     let raw = tokio::fs::read_to_string(&path)
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
@@ -124,25 +123,21 @@ pub async fn get_note(
 }
 
 pub async fn put_note(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
+    ActiveVault(vault): ActiveVault,
     Path(name): Path<String>,
     Json(body): Json<PutNoteBody>,
 ) -> Result<StatusCode, StatusCode> {
     if !is_safe_note_name(&name) {
         return Err(StatusCode::BAD_REQUEST);
     }
-    let path = note_path(&state.storage_path, &name);
+    let path = note_path(&vault.storage_path, &name);
     if let Some(parent) = path.parent() {
-        tokio::fs::create_dir_all(parent)
-            .await
-            .map_err(to_500)?;
+        tokio::fs::create_dir_all(parent).await.map_err(to_500)?;
     }
     let content = crate::frontmatter::stamp_last_modified(&body.content);
-    tokio::fs::write(&path, &content)
-        .await
-        .map_err(to_500)?;
+    tokio::fs::write(&path, &content).await.map_err(to_500)?;
 
-    // Update in-memory index (use mtime of the just-written file)
     let mtime = tokio::fs::metadata(&path)
         .await
         .ok()
@@ -151,14 +146,13 @@ pub async fn put_note(
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
     let parsed = crate::frontmatter::parse_note(&content);
-    let db = state.db.clone();
+    let db = vault.db.clone();
     let name_for_db = name.clone();
     if let Err(e) = tokio::task::spawn_blocking(move || db.upsert(&name_for_db, &parsed, mtime)).await {
         tracing::error!("db.upsert task failed for {name}: {e}");
     }
 
-    // Incremental backlink update — no filesystem walk needed
-    state.backlink_index.write().await.update_note(&name, &content);
+    vault.backlink_index.write().await.update_note(&name, &content);
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -169,7 +163,8 @@ pub struct AssetResponse {
 }
 
 pub async fn rename_note(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
+    ActiveVault(vault): ActiveVault,
     Path(name): Path<String>,
     Json(body): Json<RenameBody>,
 ) -> Result<StatusCode, StatusCode> {
@@ -179,8 +174,8 @@ pub async fn rename_note(
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    let old_path = note_path(&state.storage_path, &name);
-    let new_path = note_path(&state.storage_path, &new_name);
+    let old_path = note_path(&vault.storage_path, &name);
+    let new_path = note_path(&vault.storage_path, &new_name);
 
     if !old_path.exists() {
         return Err(StatusCode::NOT_FOUND);
@@ -190,29 +185,22 @@ pub async fn rename_note(
     }
 
     if let Some(parent) = new_path.parent() {
-        tokio::fs::create_dir_all(parent)
-            .await
-            .map_err(to_500)?;
+        tokio::fs::create_dir_all(parent).await.map_err(to_500)?;
     }
 
-    tokio::fs::rename(&old_path, &new_path)
-        .await
-        .map_err(to_500)?;
+    tokio::fs::rename(&old_path, &new_path).await.map_err(to_500)?;
 
-    let db = state.db.clone();
+    let db = vault.db.clone();
     if let Err(e) = tokio::task::spawn_blocking({
         let name = name.clone();
         let new_name = new_name.clone();
         move || db.rename(&name, &new_name)
-    })
-    .await
-    {
+    }).await {
         tracing::error!("db.rename task failed for {name} → {new_name}: {e}");
     }
 
-    // Rewrite [[old_name]] links AND rebuild the backlink index in one vault pass.
-    let storage = state.storage_path.clone();
-    let db_wl = state.db.clone();
+    let storage = vault.storage_path.clone();
+    let db_wl = vault.db.clone();
     let new_index = tokio::task::spawn_blocking({
         let storage = storage.clone();
         let name = name.clone();
@@ -222,63 +210,60 @@ pub async fn rename_note(
     .await
     .unwrap_or_default();
 
-    *state.backlink_index.write().await = new_index;
+    *vault.backlink_index.write().await = new_index;
 
     Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn delete_note(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
+    ActiveVault(vault): ActiveVault,
     Path(name): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
     if !is_safe_note_name(&name) {
         return Err(StatusCode::BAD_REQUEST);
     }
-    let path = note_path(&state.storage_path, &name);
+    let path = note_path(&vault.storage_path, &name);
     if !path.exists() {
         return Err(StatusCode::NOT_FOUND);
     }
-    tokio::fs::remove_file(&path)
-        .await
-        .map_err(to_500)?;
+    tokio::fs::remove_file(&path).await.map_err(to_500)?;
 
-    let db = state.db.clone();
+    let db = vault.db.clone();
     let name_for_db = name.clone();
     if let Err(e) = tokio::task::spawn_blocking(move || db.delete(&name_for_db)).await {
         tracing::error!("db.delete task failed for {name}: {e}");
     }
 
-    state.backlink_index.write().await.remove_note(&name);
+    vault.backlink_index.write().await.remove_note(&name);
 
     Ok(StatusCode::NO_CONTENT)
 }
 
 pub async fn upload_asset(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
+    ActiveVault(vault): ActiveVault,
     mut multipart: Multipart,
 ) -> Result<Json<AssetResponse>, StatusCode> {
     if let Ok(Some(field)) = multipart.next_field().await {
         let filename = field.file_name().unwrap_or("asset").to_string();
         let safe_name = sanitize_filename(&filename);
         let data = field.bytes().await.map_err(|_| StatusCode::BAD_REQUEST)?;
-        let dest = state.storage_path.join(".assets").join(&safe_name);
-        tokio::fs::write(&dest, &data)
-            .await
-            .map_err(to_500)?;
-        Ok(Json(AssetResponse {
-            url: format!("/assets/{safe_name}"),
-        }))
+        let dest = vault.storage_path.join(".assets").join(&safe_name);
+        tokio::fs::write(&dest, &data).await.map_err(to_500)?;
+        Ok(Json(AssetResponse { url: format!("/assets/{safe_name}") }))
     } else {
         Err(StatusCode::BAD_REQUEST)
     }
 }
 
 pub async fn serve_asset(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
+    ActiveVault(vault): ActiveVault,
     Path(filename): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let safe_name = sanitize_filename(&filename);
-    let path = state.storage_path.join(".assets").join(&safe_name);
+    let path = vault.storage_path.join(".assets").join(&safe_name);
     let data = tokio::fs::read(&path).await.map_err(|_| StatusCode::NOT_FOUND)?;
     let content_type = match safe_name.rsplit('.').next().unwrap_or("") {
         "png"  => "image/png",
@@ -299,9 +284,10 @@ pub struct AssetMeta {
 }
 
 pub async fn list_assets(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
+    ActiveVault(vault): ActiveVault,
 ) -> impl IntoResponse {
-    let dir = state.storage_path.join(".assets");
+    let dir = vault.storage_path.join(".assets");
     let assets: Vec<AssetMeta> = tokio::task::spawn_blocking(move || {
         let mut result = Vec::new();
         if let Ok(entries) = std::fs::read_dir(&dir) {
@@ -322,19 +308,15 @@ pub async fn list_assets(
 }
 
 pub async fn delete_asset(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
+    ActiveVault(vault): ActiveVault,
     Path(filename): Path<String>,
 ) -> StatusCode {
-    let path = state.storage_path.join(".assets").join(sanitize_filename(&filename));
+    let path = vault.storage_path.join(".assets").join(sanitize_filename(&filename));
     let _ = tokio::fs::remove_file(path).await;
     StatusCode::NO_CONTENT
 }
 
-/// After renaming a note, rewrite all `[[old_name]]` / `[[old_name|alias]]`
-/// occurrences in every other note to `[[new_name]]` / `[[new_name|alias]]`.
-/// After renaming, rewrite `[[old_name]]` links in every note AND rebuild the
-/// backlink index in the SAME filesystem pass (previously the vault was walked
-/// twice: once here, once in `BacklinkIndex::build`). Returns the fresh index.
 fn rename_links_and_reindex(
     notes_dir: &std::path::Path,
     old_name: &str,
@@ -342,7 +324,6 @@ fn rename_links_and_reindex(
     db: &crate::db::Db,
 ) -> crate::backlinks::BacklinkIndex {
     let escaped = regex::escape(old_name);
-    // Matches [[old_name]] and [[old_name|anything]]
     let re = Regex::new(&format!(r"\[\[{}(\|[^\]]*)?]]", escaped)).ok();
     let mut index = crate::backlinks::BacklinkIndex::default();
 
@@ -359,7 +340,6 @@ fn rename_links_and_reindex(
         let Ok(rel) = path.strip_prefix(notes_dir) else { continue };
         let note_name = rel.with_extension("").to_string_lossy().replace('\\', "/");
 
-        // Rewrite links if this note references the old name (fast-path guard).
         let final_content = match &re {
             Some(re) if content.contains(&format!("[[{}", old_name)) => {
                 let updated = re.replace_all(&content, |caps: &regex::Captures| {
@@ -377,7 +357,6 @@ fn rename_links_and_reindex(
             _ => content,
         };
 
-        // (Re)build this note's backlink entry from its final on-disk content.
         index.update_note(&note_name, &final_content);
     }
 
@@ -387,11 +366,7 @@ fn rename_links_and_reindex(
 fn sanitize_filename(name: &str) -> String {
     name.chars()
         .map(|c| {
-            if c.is_alphanumeric() || c == '.' || c == '-' || c == '_' {
-                c
-            } else {
-                '_'
-            }
+            if c.is_alphanumeric() || c == '.' || c == '-' || c == '_' { c } else { '_' }
         })
         .collect()
 }

@@ -7,7 +7,7 @@ use axum::{
 };
 use serde::Deserialize;
 
-use crate::{db::{NoteRow, SearchResult, TagCount}, AppState};
+use crate::{AppState, db::{NoteRow, SearchResult, TagCount}, vaults::ActiveVault};
 
 #[derive(Deserialize)]
 pub struct QueryParams {
@@ -15,11 +15,12 @@ pub struct QueryParams {
 }
 
 pub async fn handle_query(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
+    ActiveVault(vault): ActiveVault,
     Query(params): Query<QueryParams>,
 ) -> Result<Json<Vec<NoteRow>>, StatusCode> {
     let q = params.q.unwrap_or_default();
-    let db = state.db.clone();
+    let db = vault.db.clone();
     let results = tokio::task::spawn_blocking(move || db.query_notes(&q))
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -27,9 +28,10 @@ pub async fn handle_query(
 }
 
 pub async fn handle_tags(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
+    ActiveVault(vault): ActiveVault,
 ) -> Json<Vec<TagCount>> {
-    let db = state.db.clone();
+    let db = vault.db.clone();
     let results = tokio::task::spawn_blocking(move || db.list_tags())
         .await
         .unwrap_or_default();
@@ -37,9 +39,10 @@ pub async fn handle_tags(
 }
 
 pub async fn handle_aliases(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
+    ActiveVault(vault): ActiveVault,
 ) -> Json<HashMap<String, String>> {
-    let db = state.db.clone();
+    let db = vault.db.clone();
     let map = tokio::task::spawn_blocking(move || db.get_aliases())
         .await
         .unwrap_or_default();
@@ -52,11 +55,12 @@ pub struct FieldValuesParams {
 }
 
 pub async fn handle_field_values(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
+    ActiveVault(vault): ActiveVault,
     Query(params): Query<FieldValuesParams>,
 ) -> Json<Vec<String>> {
     let field = params.field.unwrap_or_default();
-    let db = state.db.clone();
+    let db = vault.db.clone();
     let values = tokio::task::spawn_blocking(move || db.get_field_values(&field))
         .await
         .unwrap_or_default();
@@ -64,11 +68,12 @@ pub async fn handle_field_values(
 }
 
 pub async fn handle_search(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
+    ActiveVault(vault): ActiveVault,
     Query(params): Query<QueryParams>,
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
     let q = params.q.unwrap_or_default();
-    let db = state.db.clone();
+    let db = vault.db.clone();
     let results = tokio::task::spawn_blocking(move || db.search(&q))
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;

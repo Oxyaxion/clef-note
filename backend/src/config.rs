@@ -8,9 +8,9 @@ const TEMPLATE: &str = r#"# Clef Note — configuration
 # Not required when [oidc] is configured.
 password = ""
 
-# Storage directory — optional. Defaults to ../storage (relative to the backend/).
-# Can be overridden at runtime with: ./clef-note --storage /mnt/notes
-# storage = "/mnt/notes"
+# Partitions root directory — optional. Defaults to ../partitions (relative to the binary).
+# Can be overridden at runtime with: ./clef-note --partitions /mnt/notes
+# partitions = "/mnt/notes"
 
 # Port — optional. Defaults to 3000.
 # Can be overridden at runtime with: ./clef-note --port 8080
@@ -20,15 +20,12 @@ password = ""
 # Generate with: openssl rand -hex 32
 # api_key = ""
 
-# Git sync — optional. Synchronise storage/ with a remote git repository.
-# Supports GitHub, Gitea, Forgejo, GitLab (HTTPS + token).
-# [sync]
-# remote = "https://github.com/you/notes.git"
-# branch = "main"
-# token = "ghp_xxxx"          # GitHub PAT · Gitea/Forgejo token
-# interval_minutes = 30       # 0 = manual only (use the Settings UI button)
-# author_name = "clef-note"   # optional — commit author name
-# author_email = "sync@local" # optional — commit author email
+# Git sync tokens — one entry per partition slug.
+# The token is kept here (outside any partition directory) so it is never
+# accidentally committed to a git repository.
+# [vault_tokens]
+# notes = "ghp_xxxx"
+# work  = "ghp_yyyy"
 
 # OIDC — optional. Delegate authentication to an external provider.
 # Works with Authelia, Authentik, Keycloak, and any OIDC-compliant provider.
@@ -93,9 +90,10 @@ impl fmt::Debug for SyncConfig {
 #[derive(Deserialize)]
 pub struct Config {
     pub password: Option<String>,
-    pub storage: Option<String>,
+    pub partitions: Option<String>,
     pub port: Option<u16>,
     pub api_key: Option<String>,
+    pub vault_tokens: Option<std::collections::HashMap<String, String>>,
     pub sync: Option<SyncConfig>,
     pub oidc: Option<OidcConfig>,
 }

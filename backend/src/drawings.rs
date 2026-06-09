@@ -6,21 +6,13 @@ use axum::{
     response::IntoResponse,
 };
 
-use crate::AppState;
-use crate::notes::is_safe_note_name;
-
-fn drawing_path(state: &AppState, name: &str) -> std::path::PathBuf {
-    state.storage_path.join(".drawings").join(format!("{name}.excalidraw"))
-}
-
-fn preview_path(state: &AppState, name: &str) -> std::path::PathBuf {
-    state.storage_path.join(".drawings").join(format!("{name}.svg"))
-}
+use crate::{AppState, notes::is_safe_note_name, vaults::ActiveVault};
 
 pub async fn list_drawings(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
+    ActiveVault(vault): ActiveVault,
 ) -> impl IntoResponse {
-    let dir = state.storage_path.join(".drawings");
+    let dir = vault.storage_path.join(".drawings");
     let names: Vec<String> = tokio::task::spawn_blocking(move || {
         let mut result = Vec::new();
         if let Ok(walker) = std::fs::read_dir(&dir) {
@@ -42,26 +34,28 @@ pub async fn list_drawings(
 }
 
 pub async fn get_drawing(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
+    ActiveVault(vault): ActiveVault,
     Path(name): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
     if !is_safe_note_name(&name) {
         return Err(StatusCode::BAD_REQUEST);
     }
-    let path = drawing_path(&state, &name);
+    let path = vault.storage_path.join(".drawings").join(format!("{name}.excalidraw"));
     let content = tokio::fs::read(&path).await.map_err(|_| StatusCode::NOT_FOUND)?;
     Ok(([(header::CONTENT_TYPE, "application/json")], content).into_response())
 }
 
 pub async fn put_drawing(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
+    ActiveVault(vault): ActiveVault,
     Path(name): Path<String>,
     body: axum::body::Bytes,
 ) -> Result<StatusCode, StatusCode> {
     if !is_safe_note_name(&name) {
         return Err(StatusCode::BAD_REQUEST);
     }
-    let path = drawing_path(&state, &name);
+    let path = vault.storage_path.join(".drawings").join(format!("{name}.excalidraw"));
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     }
@@ -70,38 +64,42 @@ pub async fn put_drawing(
 }
 
 pub async fn delete_drawing(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
+    ActiveVault(vault): ActiveVault,
     Path(name): Path<String>,
 ) -> StatusCode {
     if !is_safe_note_name(&name) {
         return StatusCode::BAD_REQUEST;
     }
-    let _ = tokio::fs::remove_file(drawing_path(&state, &name)).await;
-    let _ = tokio::fs::remove_file(preview_path(&state, &name)).await;
+    let drawings_dir = vault.storage_path.join(".drawings");
+    let _ = tokio::fs::remove_file(drawings_dir.join(format!("{name}.excalidraw"))).await;
+    let _ = tokio::fs::remove_file(drawings_dir.join(format!("{name}.svg"))).await;
     StatusCode::NO_CONTENT
 }
 
 pub async fn get_preview(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
+    ActiveVault(vault): ActiveVault,
     Path(name): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
     if !is_safe_note_name(&name) {
         return Err(StatusCode::BAD_REQUEST);
     }
-    let path = preview_path(&state, &name);
+    let path = vault.storage_path.join(".drawings").join(format!("{name}.svg"));
     let content = tokio::fs::read(&path).await.map_err(|_| StatusCode::NOT_FOUND)?;
     Ok(([(header::CONTENT_TYPE, "image/svg+xml")], content).into_response())
 }
 
 pub async fn put_preview(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
+    ActiveVault(vault): ActiveVault,
     Path(name): Path<String>,
     body: axum::body::Bytes,
 ) -> Result<StatusCode, StatusCode> {
     if !is_safe_note_name(&name) {
         return Err(StatusCode::BAD_REQUEST);
     }
-    let path = preview_path(&state, &name);
+    let path = vault.storage_path.join(".drawings").join(format!("{name}.svg"));
     tokio::fs::write(&path, body).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(StatusCode::NO_CONTENT)
 }

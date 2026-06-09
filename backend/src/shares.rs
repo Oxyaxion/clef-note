@@ -15,8 +15,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
-use crate::AppState;
-use crate::notes::is_safe_note_name;
+use crate::{AppState, notes::is_safe_note_name, vaults::ActiveVault};
 
 static DRAWING_RE: OnceLock<Regex> = OnceLock::new();
 static QUERY_RE: OnceLock<Regex> = OnceLock::new();
@@ -31,6 +30,9 @@ static MULTI_BLANK_RE: OnceLock<Regex> = OnceLock::new();
 pub struct Share {
     pub slug: String,
     pub note: String,
+    /// Vault slug the note belongs to. None for shares created before multi-vault.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vault: Option<String>,
     pub created_at: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<DateTime<Utc>>,
@@ -38,8 +40,10 @@ pub struct Share {
     pub password_hash: Option<String>,
 }
 
+/// .shares.json lives at the partitions root — global across all vaults so
+/// that public URLs stay stable when the user switches the active vault.
 fn shares_path(state: &AppState) -> std::path::PathBuf {
-    state.storage_path.join(".shares.json")
+    state.root_path.join(".shares.json")
 }
 
 async fn load_shares(state: &AppState) -> HashMap<String, Share> {
@@ -72,13 +76,10 @@ fn is_valid_slug(s: &str) -> bool {
 
 // ── Preprocessing ─────────────────────────────────────────────────────────
 
-/// Strip internal constructs (wiki links, query/drawing blocks, image embeds) before serving.
 pub fn preprocess_for_share(content: &str) -> String {
     let drawing_re = DRAWING_RE.get_or_init(|| Regex::new(r"(?s)```drawing\n.*?```").unwrap());
     let query_re   = QUERY_RE.get_or_init(||   Regex::new(r"(?s)```query\n.*?```").unwrap());
-    // ![[...]] Obsidian-style image/file embeds — remove entirely
     let embed_re   = EMBED_RE.get_or_init(||   Regex::new(r"!\[\[[^\]]+\]\]").unwrap());
-    // [[Note|alias]] → alias, [[Note]] → Note
     let alias_re   = WIKI_ALIAS_RE.get_or_init(|| Regex::new(r"\[\[[^\]|]+\|([^\]]+)\]\]").unwrap());
     let wiki_re    = WIKI_RE.get_or_init(||    Regex::new(r"\[\[([^\]|]+)\]\]").unwrap());
     let blank_re   = MULTI_BLANK_RE.get_or_init(|| Regex::new(r"\n{3,}").unwrap());
@@ -91,7 +92,6 @@ pub fn preprocess_for_share(content: &str) -> String {
     blank_re.replace_all(&s, "\n\n").trim().to_string()
 }
 
-/// Remove all expired shares from storage. Called on startup and hourly.
 pub async fn purge_expired(state: &AppState) {
     let mut shares = load_shares(state).await;
     let before = shares.len();
@@ -114,10 +114,11 @@ pub struct CreateShareRequest {
 
 pub async fn create_share(
     State(state): State<Arc<AppState>>,
+    ActiveVault(vault): ActiveVault,
     Json(body): Json<CreateShareRequest>,
 ) -> impl IntoResponse {
     if !is_valid_slug(&body.slug) {
-        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "Invalid slug: alphanumeric + hyphens only, max 80 chars"}))).into_response();
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "Invalid slug"}))).into_response();
     }
     if !is_safe_note_name(&body.note) {
         return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "Invalid note name"}))).into_response();
@@ -142,6 +143,7 @@ pub async fn create_share(
     let share = Share {
         slug: body.slug.clone(),
         note: body.note,
+        vault: Some(vault.slug.clone()),
         created_at: Utc::now(),
         expires_at: body.expires_at,
         password_hash,
@@ -155,13 +157,16 @@ pub async fn create_share(
     (StatusCode::CREATED, Json(resp)).into_response()
 }
 
-pub async fn list_shares(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
+pub async fn list_shares(
+    State(state): State<Arc<AppState>>,
+    ActiveVault(vault): ActiveVault,
+) -> Json<serde_json::Value> {
     let mut list: Vec<serde_json::Value> = load_shares(&state)
         .await
         .values()
+        .filter(|s| s.vault.as_deref() == Some(&vault.slug) || s.vault.is_none())
         .map(share_view)
         .collect();
-    // Newest first
     list.sort_by(|a, b| {
         b["created_at"].as_str().unwrap_or("").cmp(a["created_at"].as_str().unwrap_or(""))
     });
@@ -181,9 +186,7 @@ pub async fn delete_share(
 
 #[derive(Deserialize)]
 pub struct UpdateShareRequest {
-    /// `null` clears expiry; omitted = no change
     pub expires_at: Option<serde_json::Value>,
-    /// `""` clears password; omitted = no change
     pub password: Option<String>,
 }
 
@@ -228,7 +231,6 @@ pub async fn update_share(
 
 #[derive(Deserialize)]
 pub struct SharedQuery {
-    /// Present (any value) → return raw markdown instead of JSON
     pub raw: Option<String>,
 }
 
@@ -245,7 +247,6 @@ pub async fn get_shared(
         return StatusCode::NOT_FOUND.into_response();
     };
 
-    // Expired? Delete from store and return 410.
     if let Some(exp) = share.expires_at {
         if Utc::now() > exp {
             let mut shares = shares;
@@ -255,7 +256,6 @@ pub async fn get_shared(
         }
     }
 
-    // Password check via X-Share-Password header
     if let Some(hash_str) = &share.password_hash {
         if state.login_guard.is_locked(ip) {
             return StatusCode::TOO_MANY_REQUESTS.into_response();
@@ -272,16 +272,26 @@ pub async fn get_shared(
             return (
                 StatusCode::UNAUTHORIZED,
                 Json(serde_json::json!({"error": "Password required", "password_required": true})),
-            )
-                .into_response();
+            ).into_response();
         }
         state.login_guard.record_success(ip);
     }
 
-    // Load note
-    let note_path = state
-        .storage_path
-        .join(format!("{}.md", share.note.replace('/', std::path::MAIN_SEPARATOR_STR)));
+    // Resolve vault for this share (fall back to first vault for legacy shares)
+    let vault_slug = share.vault.clone();
+    let storage_path = {
+        let vaults = state.vaults.read().await;
+        let vault = match &vault_slug {
+            Some(slug) => vaults.get(slug.as_str()),
+            None => vaults.values().next(),
+        };
+        match vault {
+            Some(v) => v.storage_path.clone(),
+            None => return StatusCode::NOT_FOUND.into_response(),
+        }
+    };
+
+    let note_path = storage_path.join(format!("{}.md", share.note.replace('/', std::path::MAIN_SEPARATOR_STR)));
     let raw_file = match tokio::fs::read_to_string(&note_path).await {
         Ok(c) => c,
         Err(_) => return StatusCode::NOT_FOUND.into_response(),
@@ -298,8 +308,7 @@ pub async fn get_shared(
             StatusCode::OK,
             [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
             format!("# {title}\n\n{content}"),
-        )
-            .into_response();
+        ).into_response();
     }
 
     Json(serde_json::json!({
@@ -308,6 +317,5 @@ pub async fn get_shared(
         "content":    content,
         "note":       share.note,
         "expires_at": share.expires_at,
-    }))
-    .into_response()
+    })).into_response()
 }

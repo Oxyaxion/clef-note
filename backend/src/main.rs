@@ -9,14 +9,16 @@ mod key;
 mod notes;
 mod oidc;
 mod openapi;
+mod partition;
 mod query;
 mod seed;
 mod session;
 mod settings;
 mod shares;
 mod sync;
+mod vaults;
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use axum::{
     Json, Router, extract::{Request, State}, http::{StatusCode, header},
@@ -26,15 +28,13 @@ use axum::{
 use tower_http::cors::{Any, CorsLayer};
 
 pub struct AppState {
-    pub storage_path: std::path::PathBuf,
-    pub backlink_index: tokio::sync::RwLock<backlinks::BacklinkIndex>,
-    pub db: Arc<db::Db>,
+    pub root_path: std::path::PathBuf,
+    pub vaults: tokio::sync::RwLock<HashMap<String, Arc<vaults::VaultState>>>,
+    pub active_vault: tokio::sync::RwLock<String>,
     pub password_hash: String,
     pub sessions: session::SessionStore,
     pub api_key: Option<String>,
     pub login_guard: auth::LoginGuard,
-    pub sync_config: Option<config::SyncConfig>,
-    pub sync_status: sync::SharedSyncStatus,
     pub oidc_client: Option<oidc::OidcClient>,
 }
 
@@ -47,11 +47,10 @@ async fn main() {
         return;
     }
 
-    // --hash-password <plaintext> → print Argon2 hash and exit
     if let Some(i) = args.iter().position(|a| a == "--hash-password") {
         match args.get(i + 1) {
             Some(pwd) => { println!("{}", auth::hash_password(pwd)); }
-            None => { eprintln!("usage: aura-notes --hash-password \"yourpassword\""); }
+            None => { eprintln!("usage: clef-note --hash-password \"yourpassword\""); }
         }
         return;
     }
@@ -59,7 +58,7 @@ async fn main() {
     tracing_subscriber::fmt::init();
     let (state, port) = setup_state().await;
     let state = Arc::new(state);
-    start_sync_task(&state);
+    start_sync_tasks(&state);
     start_share_purge_task(&state);
     run_server(state, port).await;
 }
@@ -79,87 +78,129 @@ fn parse_arg(name: &str) -> Option<String> {
 }
 
 async fn setup_state() -> (AppState, u16) {
-    let default_storage = std::path::PathBuf::from("../storage");
+    let default_partitions = std::path::PathBuf::from("../partitions");
 
-    // Config file location is unchanged — always relative to the default storage dir.
-    let cfg = config::load(&default_storage);
+    let cfg = config::load(&default_partitions);
 
-    // Priority: --storage arg > storage in toml > ../storage
-    let storage_path = parse_arg("storage")
+    // Priority: --partitions arg > partitions in toml > ../partitions
+    let root_path = parse_arg("partitions")
         .map(std::path::PathBuf::from)
-        .or_else(|| cfg.storage.as_deref().map(std::path::PathBuf::from))
-        .unwrap_or(default_storage);
+        .or_else(|| cfg.partitions.as_deref().map(std::path::PathBuf::from))
+        .unwrap_or(default_partitions);
 
-    // Priority: --port arg > port in toml > 3000
     let port = parse_arg("port").and_then(|v| v.parse().ok()).or(cfg.port).unwrap_or(3000);
 
-    tokio::fs::create_dir_all(storage_path.join(".assets")).await.unwrap();
-    tokio::fs::create_dir_all(storage_path.join(".drawings")).await.unwrap();
+    tokio::fs::create_dir_all(&root_path).await.unwrap();
 
-    seed::seed_defaults(&storage_path).await;
+    // settings.json lives at the partitions root (global, never inside a vault)
+    // No vault-specific init needed here.
 
-    let db = Arc::new(db::Db::new());
-    let backlink_index = backlinks::BacklinkIndex::build(&storage_path).await;
+    let vault_tokens = cfg.vault_tokens.clone().unwrap_or_default();
+    let discovered = vaults::discover(&root_path, &vault_tokens).await;
 
-    let db_clone = db.clone();
-    let notes_dir = storage_path.clone();
-    tokio::task::spawn_blocking(move || index_all_notes(&db_clone, &notes_dir))
-        .await
-        .ok();
+    if discovered.is_empty() {
+        // First run: auto-create a default "notes" partition.
+        let vault = vaults::init(
+            "notes".to_string(),
+            "Notes".to_string(),
+            root_path.join("notes"),
+            None,
+        ).await;
+        let toml = "name = \"Notes\"\n";
+        tokio::fs::write(root_path.join("notes").join("partition.toml"), toml).await.ok();
+        let mut map: HashMap<String, Arc<vaults::VaultState>> = HashMap::new();
+        map.insert("notes".to_string(), Arc::new(vault));
+        let active = "notes".to_string();
 
-    let sync_status = sync::new_status(cfg.sync.is_some());
+        let oidc_client = init_oidc(&cfg).await;
+        return (AppState {
+            root_path,
+            vaults: tokio::sync::RwLock::new(map),
+            active_vault: tokio::sync::RwLock::new(active),
+            password_hash: cfg.password.unwrap_or_default(),
+            sessions: session::SessionStore::new(),
+            api_key: cfg.api_key,
+            login_guard: auth::LoginGuard::new(),
+            oidc_client,
+        }, port);
+    }
 
-    let oidc_client = if let Some(oidc_cfg) = &cfg.oidc {
-        match oidc::init(oidc_cfg).await {
-            Ok(c) => {
-                tracing::info!("OIDC configured with provider '{}'", c.provider_name);
-                Some(c)
-            }
-            Err(e) => {
-                eprintln!("error: OIDC init failed: {e}");
-                std::process::exit(1);
-            }
-        }
-    } else {
-        None
-    };
+    let active_slug = discovered[0].slug.clone();
+    let mut map: HashMap<String, Arc<vaults::VaultState>> = HashMap::new();
+    for v in discovered {
+        map.insert(v.slug.clone(), v);
+    }
+
+    let oidc_client = init_oidc(&cfg).await;
 
     let state = AppState {
-        storage_path,
-        backlink_index: tokio::sync::RwLock::new(backlink_index),
-        db,
+        root_path,
+        vaults: tokio::sync::RwLock::new(map),
+        active_vault: tokio::sync::RwLock::new(active_slug),
         password_hash: cfg.password.unwrap_or_default(),
         sessions: session::SessionStore::new(),
         api_key: cfg.api_key,
         login_guard: auth::LoginGuard::new(),
-        sync_config: cfg.sync,
-        sync_status,
         oidc_client,
     };
     (state, port)
 }
 
-/// Spawn the periodic sync background task if sync is configured.
-fn start_sync_task(state: &Arc<AppState>) {
-    let Some(cfg) = state.sync_config.clone() else { return };
-    let storage = state.storage_path.clone();
-    let status = state.sync_status.clone();
-
-    tokio::spawn(async move {
-        // Initial sync on startup.
-        sync::run_sync(&cfg, &storage, &status).await;
-
-        let interval_secs = cfg.interval_minutes.unwrap_or(0) * 60;
-        if interval_secs > 0 {
-            let mut ticker =
-                tokio::time::interval(tokio::time::Duration::from_secs(interval_secs));
-            ticker.tick().await; // first tick fires immediately — skip it
-            loop {
-                ticker.tick().await;
-                sync::run_sync(&cfg, &storage, &status).await;
-            }
+async fn init_oidc(cfg: &config::Config) -> Option<oidc::OidcClient> {
+    let oidc_cfg = cfg.oidc.as_ref()?;
+    match oidc::init(oidc_cfg).await {
+        Ok(c) => {
+            tracing::info!("OIDC configured with provider '{}'", c.provider_name);
+            Some(c)
         }
-    });
+        Err(e) => {
+            eprintln!("error: OIDC init failed: {e}");
+            std::process::exit(1);
+        }
+    }
+}
+
+/// Start one periodic sync task per vault that has sync configured.
+fn start_sync_tasks(state: &Arc<AppState>) {
+    // Collect sync configs synchronously by blocking briefly — startup only.
+    let vaults: Vec<(String, config::SyncConfig, std::path::PathBuf, sync::SharedSyncStatus)> = {
+        // We're in a sync context here (called from main before the runtime is
+        // fully yielded), so use try_read which is always available at startup.
+        if let Ok(guard) = state.vaults.try_read() {
+            guard.values()
+                .filter_map(|v| {
+                    v.sync_config.clone().map(|cfg| (
+                        v.slug.clone(),
+                        cfg,
+                        v.storage_path.clone(),
+                        v.sync_status.clone(),
+                    ))
+                })
+                .collect()
+        } else {
+            vec![]
+        }
+    };
+
+    for (slug, cfg, storage, status) in vaults {
+        let slug_log = slug.clone();
+        tokio::spawn(async move {
+            tracing::info!("Starting sync for partition '{}'", slug_log);
+            sync::run_sync(&cfg, &storage, &status).await;
+
+            let interval_secs = cfg.interval_minutes.unwrap_or(0) * 60;
+            if interval_secs > 0 {
+                let mut ticker = tokio::time::interval(
+                    tokio::time::Duration::from_secs(interval_secs),
+                );
+                ticker.tick().await;
+                loop {
+                    ticker.tick().await;
+                    sync::run_sync(&cfg, &storage, &status).await;
+                }
+            }
+        });
+    }
 }
 
 fn start_share_purge_task(state: &Arc<AppState>) {
@@ -167,7 +208,7 @@ fn start_share_purge_task(state: &Arc<AppState>) {
     tokio::spawn(async move {
         shares::purge_expired(&state).await;
         let mut ticker = tokio::time::interval(tokio::time::Duration::from_secs(3600));
-        ticker.tick().await; // first tick fires immediately — skip it
+        ticker.tick().await;
         loop {
             ticker.tick().await;
             shares::purge_expired(&state).await;
@@ -177,8 +218,6 @@ fn start_share_purge_task(state: &Arc<AppState>) {
 
 // ── No-cache middleware ───────────────────────────────────────────────────────
 
-/// Add Cache-Control: no-store to every response on dynamic routes so that
-/// nginx, Authelia, and the browser HTTP cache never serve stale note data.
 async fn no_cache(request: Request, next: Next) -> Response {
     let mut response = next.run(request).await;
     response.headers_mut().insert(
@@ -188,18 +227,24 @@ async fn no_cache(request: Request, next: Next) -> Response {
     response
 }
 
-// ── Sync API handlers ─────────────────────────────────────────────────────────
+// ── Sync API handlers (active vault) ─────────────────────────────────────────
 
-async fn get_sync_status(State(state): State<Arc<AppState>>) -> Json<sync::SyncStatus> {
-    Json(state.sync_status.lock().unwrap().clone())
+async fn get_sync_status(
+    State(_state): State<Arc<AppState>>,
+    vaults::ActiveVault(vault): vaults::ActiveVault,
+) -> Json<sync::SyncStatus> {
+    Json(vault.sync_status.lock().unwrap().clone())
 }
 
-async fn trigger_sync(State(state): State<Arc<AppState>>) -> StatusCode {
-    let Some(cfg) = state.sync_config.clone() else {
+async fn trigger_sync(
+    State(_state): State<Arc<AppState>>,
+    vaults::ActiveVault(vault): vaults::ActiveVault,
+) -> StatusCode {
+    let Some(cfg) = vault.sync_config.clone() else {
         return StatusCode::SERVICE_UNAVAILABLE;
     };
-    let storage = state.storage_path.clone();
-    let status = state.sync_status.clone();
+    let storage = vault.storage_path.clone();
+    let status = vault.sync_status.clone();
     tokio::spawn(async move {
         sync::run_sync(&cfg, &storage, &status).await;
     });
@@ -238,11 +283,13 @@ async fn run_server(state: Arc<AppState>, port: u16) {
         .route("/api/sync", post(trigger_sync))
         .route("/api/shares", get(shares::list_shares).post(shares::create_share))
         .route("/api/shares/{slug}", delete(shares::delete_share).patch(shares::update_share))
+        .route("/api/vaults", get(vaults::list_vaults).post(vaults::create_vault))
+        .route("/api/vaults/active", post(vaults::switch_vault))
+        .route("/api/vaults/{slug}", delete(vaults::delete_vault))
         .route("/auth/logout", post(auth::logout))
         .layer(middleware::from_fn_with_state(state.clone(), auth::middleware))
         .layer(middleware::from_fn(no_cache));
 
-    // Public — no auth
     let app = Router::new()
         .merge(protected)
         .route("/auth/login", post(auth::login))
@@ -260,23 +307,4 @@ async fn run_server(state: Arc<AppState>, port: u16) {
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     tracing::info!("Listening on http://{addr}");
     axum::serve(listener, app.into_make_service_with_connect_info::<std::net::SocketAddr>()).await.unwrap();
-}
-
-fn index_all_notes(db: &db::Db, notes_dir: &std::path::Path) {
-    for entry in walkdir::WalkDir::new(notes_dir)
-        .into_iter()
-        .filter_entry(|e| !e.file_name().to_str().map_or(false, |s| s.starts_with('.')))
-        .filter_map(|e| e.ok())
-    {
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("md") {
-            continue;
-        }
-        let Ok(rel) = path.strip_prefix(notes_dir) else { continue };
-        let name = rel.with_extension("").to_string_lossy().replace('\\', "/");
-        if let Ok(content) = std::fs::read_to_string(path) {
-            let parsed = frontmatter::parse_note(&content);
-            db.upsert(&name, &parsed, notes::read_mtime(path));
-        }
-    }
 }

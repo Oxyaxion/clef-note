@@ -671,6 +671,29 @@ fn parse_query(q: &str) -> ParsedQuery {
     ParsedQuery { or_groups, global_not, recent, oldest, order_by }
 }
 
+// ── Indexing ──────────────────────────────────────────────────────────────────
+
+/// Walk `notes_dir`, parse every `.md` file and insert it into `db`.
+/// Hidden directories (names starting with `.`) are skipped.
+pub fn index_dir(db: &Db, notes_dir: &std::path::Path) {
+    for entry in walkdir::WalkDir::new(notes_dir)
+        .into_iter()
+        .filter_entry(|e| !e.file_name().to_str().map_or(false, |s| s.starts_with('.')))
+        .filter_map(|e| e.ok())
+    {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("md") {
+            continue;
+        }
+        let Ok(rel) = path.strip_prefix(notes_dir) else { continue };
+        let name = rel.with_extension("").to_string_lossy().replace('\\', "/");
+        if let Ok(content) = std::fs::read_to_string(path) {
+            let parsed = crate::frontmatter::parse_note(&content);
+            db.upsert(&name, &parsed, crate::notes::read_mtime(path));
+        }
+    }
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

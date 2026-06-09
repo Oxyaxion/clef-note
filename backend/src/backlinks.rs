@@ -3,7 +3,7 @@ use axum::{extract::{Path as AxumPath, State}, http::StatusCode, response::Json}
 use regex::Regex;
 use serde::Serialize;
 
-use crate::AppState;
+use crate::{AppState, vaults::ActiveVault};
 
 #[derive(Default)]
 pub struct BacklinkIndex {
@@ -93,10 +93,11 @@ pub struct BacklinksResponse {
 }
 
 pub async fn get_backlinks(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
+    ActiveVault(vault): ActiveVault,
     AxumPath(name): AxumPath<String>,
 ) -> Result<Json<BacklinksResponse>, StatusCode> {
-    let index = state.backlink_index.read().await;
+    let index = vault.backlink_index.read().await;
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut backlinks: Vec<String> = Vec::new();
 
@@ -110,14 +111,12 @@ pub async fn get_backlinks(
 
     add(index.get(&name));
 
-    // Also look up by basename: [[Note Name]] links to Dev/Note Name
     let basename = name.split('/').next_back().unwrap_or(&name);
     if basename != name {
         add(index.get(basename));
     }
 
-    // Also gather backlinks via aliases
-    let db = state.db.clone();
+    let db = vault.db.clone();
     let name_clone = name.clone();
     let aliases = tokio::task::spawn_blocking(move || db.get_note_aliases(&name_clone))
         .await

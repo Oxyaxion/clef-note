@@ -1,0 +1,225 @@
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
+
+use axum::{extract::State, http::StatusCode, Json};
+use serde::{Deserialize, Serialize};
+
+use crate::{AppState, config::SyncConfig, db::Db, sync};
+
+// ── VaultState ────────────────────────────────────────────────────────────────
+
+pub struct VaultState {
+    pub slug: String,
+    pub name: String,
+    pub storage_path: PathBuf,
+    pub db: Arc<Db>,
+    pub backlink_index: tokio::sync::RwLock<crate::backlinks::BacklinkIndex>,
+    pub sync_config: Option<SyncConfig>,
+    pub sync_status: sync::SharedSyncStatus,
+}
+
+// ── API types ─────────────────────────────────────────────────────────────────
+
+#[derive(Serialize, Clone)]
+pub struct VaultInfo {
+    pub slug: String,
+    pub name: String,
+    pub active: bool,
+    pub has_sync: bool,
+}
+
+#[derive(Deserialize)]
+pub struct SwitchRequest {
+    pub slug: String,
+}
+
+#[derive(Deserialize)]
+pub struct CreateRequest {
+    pub name: String,
+}
+
+// ── Discovery ─────────────────────────────────────────────────────────────────
+
+/// Scan `root` for subdirectories containing a `partition.toml`.
+/// Returns an ordered list (alphabetical by slug). Panics-safe: unknown dirs
+/// are silently skipped.
+pub async fn discover(
+    root: &std::path::Path,
+    vault_tokens: &HashMap<String, String>,
+) -> Vec<Arc<VaultState>> {
+    let mut entries: Vec<(String, PathBuf)> = Vec::new();
+
+    if let Ok(mut rd) = tokio::fs::read_dir(root).await {
+        while let Ok(Some(entry)) = rd.next_entry().await {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let slug = match path.file_name().and_then(|n| n.to_str()) {
+                Some(s) if !s.starts_with('.') => s.to_string(),
+                _ => continue,
+            };
+            if path.join("partition.toml").exists() {
+                entries.push((slug, path));
+            }
+        }
+    }
+
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let mut vaults = Vec::new();
+    for (slug, path) in entries {
+        let partition = crate::partition::load(&path);
+        let name = partition.name.unwrap_or_else(|| slug.clone());
+        let mut sync_cfg = partition.sync;
+        if let Some(ref mut sync) = sync_cfg {
+            if let Some(token) = vault_tokens.get(&slug) {
+                sync.token = token.clone();
+            }
+        }
+        let vault = init(slug, name, path, sync_cfg).await;
+        vaults.push(Arc::new(vault));
+    }
+
+    vaults
+}
+
+/// Initialise a single vault: create dirs, seed defaults, build index.
+pub async fn init(
+    slug: String,
+    name: String,
+    storage_path: PathBuf,
+    sync_config: Option<SyncConfig>,
+) -> VaultState {
+    tokio::fs::create_dir_all(storage_path.join(".assets")).await.ok();
+    tokio::fs::create_dir_all(storage_path.join(".drawings")).await.ok();
+
+    crate::seed::seed_defaults(&storage_path).await;
+
+    let db = Arc::new(Db::new());
+    let backlink_index = crate::backlinks::BacklinkIndex::build(&storage_path).await;
+
+    let db_clone = db.clone();
+    let notes_dir = storage_path.clone();
+    tokio::task::spawn_blocking(move || crate::db::index_dir(&db_clone, &notes_dir))
+        .await
+        .ok();
+
+    let sync_status = sync::new_status(sync_config.is_some());
+
+    VaultState { slug, name, storage_path, db, backlink_index: tokio::sync::RwLock::new(backlink_index), sync_config, sync_status }
+}
+
+// ── Axum extractor ────────────────────────────────────────────────────────────
+
+/// Injects the currently active `VaultState` into a handler.
+pub struct ActiveVault(pub Arc<VaultState>);
+
+impl axum::extract::FromRequestParts<Arc<AppState>> for ActiveVault {
+    type Rejection = (StatusCode, &'static str);
+
+    async fn from_request_parts(
+        _parts: &mut axum::http::request::Parts,
+        state: &Arc<AppState>,
+    ) -> Result<Self, Self::Rejection> {
+        let slug = state.active_vault.read().await.clone();
+        let vaults = state.vaults.read().await;
+        let vault = vaults
+            .get(&slug)
+            .cloned()
+            .ok_or((StatusCode::INTERNAL_SERVER_ERROR, "active vault not found"))?;
+        Ok(ActiveVault(vault))
+    }
+}
+
+// ── API handlers ──────────────────────────────────────────────────────────────
+
+pub async fn list_vaults(State(state): State<Arc<AppState>>) -> Json<Vec<VaultInfo>> {
+    let active = state.active_vault.read().await.clone();
+    let vaults = state.vaults.read().await;
+    let mut infos: Vec<VaultInfo> = vaults
+        .values()
+        .map(|v| VaultInfo {
+            slug: v.slug.clone(),
+            name: v.name.clone(),
+            active: v.slug == active,
+            has_sync: v.sync_config.is_some(),
+        })
+        .collect();
+    infos.sort_by(|a, b| a.name.cmp(&b.name));
+    Json(infos)
+}
+
+pub async fn switch_vault(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<SwitchRequest>,
+) -> StatusCode {
+    let exists = state.vaults.read().await.contains_key(&body.slug);
+    if !exists {
+        return StatusCode::NOT_FOUND;
+    }
+    *state.active_vault.write().await = body.slug;
+    StatusCode::NO_CONTENT
+}
+
+pub async fn create_vault(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<CreateRequest>,
+) -> Result<Json<VaultInfo>, StatusCode> {
+    let name = body.name.trim().to_string();
+    if name.is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    let slug: String = name
+        .to_lowercase()
+        .replace(' ', "-")
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == '-')
+        .collect();
+    if slug.is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    if state.vaults.read().await.contains_key(&slug) {
+        return Err(StatusCode::CONFLICT);
+    }
+
+    let vault_dir = state.root_path.join(&slug);
+    tokio::fs::create_dir_all(&vault_dir)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let toml = format!("name = \"{}\"\n", name.replace('"', "\\\""));
+    tokio::fs::write(vault_dir.join("partition.toml"), toml)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let vault = init(slug.clone(), name.clone(), vault_dir, None).await;
+    let info = VaultInfo { slug: slug.clone(), name, active: false, has_sync: false };
+    state.vaults.write().await.insert(slug, Arc::new(vault));
+
+    Ok(Json(info))
+}
+
+pub async fn delete_vault(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Path(slug): axum::extract::Path<String>,
+) -> StatusCode {
+    let active = state.active_vault.read().await.clone();
+    if active == slug {
+        return StatusCode::CONFLICT;
+    }
+
+    let vault_dir = {
+        let vaults = state.vaults.read().await;
+        match vaults.get(&slug) {
+            Some(v) => v.storage_path.clone(),
+            None => return StatusCode::NOT_FOUND,
+        }
+    };
+
+    state.vaults.write().await.remove(&slug);
+    tokio::fs::remove_dir_all(&vault_dir).await.ok();
+
+    StatusCode::NO_CONTENT
+}
