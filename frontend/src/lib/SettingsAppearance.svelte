@@ -201,33 +201,38 @@
 
 	.btn-group {
 		display: flex;
-		gap: 0.3rem;
 		flex-wrap: wrap;
 		justify-content: flex-end;
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		overflow: hidden;
+		background: var(--sidebar-bg);
 	}
 
 	.option-btn {
-		background: var(--sidebar-bg);
-		border: 1px solid var(--border);
-		border-radius: 6px;
-		padding: 0.3rem 0.65rem;
-		font-size: 0.82rem;
+		background: transparent;
+		border: none;
+		border-right: 1px solid var(--border);
+		padding: 0.2rem 0.55rem;
+		font-size: 0.75rem;
 		color: var(--muted);
 		cursor: pointer;
 		font-family: inherit;
-		transition: background 80ms, border-color 80ms, color 80ms;
+		transition: background 80ms, color 80ms;
 		white-space: nowrap;
+		line-height: 1.5;
 	}
+
+	.option-btn:last-child { border-right: none; }
 
 	.option-btn:hover { background: var(--border); color: var(--text); }
 
 	.option-btn.active {
 		background: var(--accent);
-		border-color: var(--accent);
 		color: var(--bg);
 	}
 
-	.font-btns .option-btn { font-size: 0.85rem; }
+	.font-btns .option-btn { font-size: 0.78rem; }
 
 	.slider-wrap {
 		display: flex;
