@@ -137,16 +137,18 @@
 >
 	<div class="sidebar-head">
 		{#if !collapsed}
-			{#if vaults.length > 0 && (onVaultSwitch || onVaultCreated || onVaultDeleted)}
-				<VaultSwitcher
-					{vaults}
-					onSwitch={(slug) => onVaultSwitch?.(slug)}
-					onCreated={(vault) => onVaultCreated?.(vault)}
-					onDeleted={(slug) => onVaultDeleted?.(slug)}
-				/>
-			{:else}
-				<span class="vault-name">{vaults.find(v => v.active)?.name ?? 'Notes'}</span>
-			{/if}
+			<div class="vault-area">
+				{#if vaults.length > 0 && (onVaultSwitch || onVaultCreated || onVaultDeleted)}
+					<VaultSwitcher
+						{vaults}
+						onSwitch={(slug) => onVaultSwitch?.(slug)}
+						onCreated={(vault) => onVaultCreated?.(vault)}
+						onDeleted={(slug) => onVaultDeleted?.(slug)}
+					/>
+				{:else}
+					<span class="vault-name">{vaults.find(v => v.active)?.name ?? 'Notes'}</span>
+				{/if}
+			</div>
 			<div class="head-actions">
 				<button
 					onclick={() => (creating = !creating)}
@@ -382,6 +384,13 @@
 		gap: 0.1rem;
 		flex-shrink: 0;
 		min-height: 44px;
+	}
+
+	.vault-area {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		align-items: center;
 	}
 
 	.vault-name {
