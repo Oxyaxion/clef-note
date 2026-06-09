@@ -201,34 +201,30 @@
 
 	.btn-group {
 		display: flex;
+		gap: 0.25rem;
 		flex-wrap: wrap;
 		justify-content: flex-end;
-		border: 1px solid var(--border);
-		border-radius: 6px;
-		overflow: hidden;
-		background: var(--sidebar-bg);
 	}
 
 	.option-btn {
-		background: transparent;
-		border: none;
-		border-right: 1px solid var(--border);
-		padding: 0.25rem 0.75rem;
-		font-size: 0.78rem;
+		background: var(--sidebar-bg);
+		border: 1px solid var(--border);
+		border-radius: 5px;
+		padding: 0.18rem 0.6rem;
+		font-size: 0.76rem;
 		color: var(--muted);
 		cursor: pointer;
 		font-family: inherit;
-		transition: background 80ms, color 80ms;
+		transition: background 80ms, border-color 80ms, color 80ms;
 		white-space: nowrap;
 		line-height: 1.5;
 	}
-
-	.option-btn:last-child { border-right: none; }
 
 	.option-btn:hover { background: var(--border); color: var(--text); }
 
 	.option-btn.active {
 		background: var(--accent);
+		border-color: var(--accent);
 		color: var(--bg);
 	}
 
