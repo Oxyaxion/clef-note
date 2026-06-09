@@ -23,7 +23,7 @@ password = ""
 # Git sync tokens — one entry per partition slug.
 # The token is kept here (outside any partition directory) so it is never
 # accidentally committed to a git repository.
-# [vault_tokens]
+# [partition_tokens]
 # notes = "ghp_xxxx"
 # work  = "ghp_yyyy"
 
@@ -93,7 +93,7 @@ pub struct Config {
     pub partitions: Option<String>,
     pub port: Option<u16>,
     pub api_key: Option<String>,
-    pub vault_tokens: Option<std::collections::HashMap<String, String>>,
+    pub partition_tokens: Option<std::collections::HashMap<String, String>>,
     pub sync: Option<SyncConfig>,
     pub oidc: Option<OidcConfig>,
 }

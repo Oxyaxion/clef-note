@@ -16,7 +16,7 @@ mod session;
 mod settings;
 mod shares;
 mod sync;
-mod vaults;
+mod partitions;
 
 use std::{collections::HashMap, sync::Arc};
 
@@ -29,8 +29,8 @@ use tower_http::cors::{Any, CorsLayer};
 
 pub struct AppState {
     pub root_path: std::path::PathBuf,
-    pub vaults: tokio::sync::RwLock<HashMap<String, Arc<vaults::VaultState>>>,
-    pub active_vault: tokio::sync::RwLock<String>,
+    pub partitions: tokio::sync::RwLock<HashMap<String, Arc<partitions::PartitionState>>>,
+    pub active_partition: tokio::sync::RwLock<String>,
     pub password_hash: String,
     pub sessions: session::SessionStore,
     pub api_key: Option<String>,
@@ -95,12 +95,12 @@ async fn setup_state() -> (AppState, u16) {
     // settings.json lives at the partitions root (global, never inside a vault)
     // No vault-specific init needed here.
 
-    let vault_tokens = cfg.vault_tokens.clone().unwrap_or_default();
-    let discovered = vaults::discover(&root_path, &vault_tokens).await;
+    let partition_tokens = cfg.partition_tokens.clone().unwrap_or_default();
+    let discovered = partitions::discover(&root_path, &partition_tokens).await;
 
     if discovered.is_empty() {
         // First run: auto-create a default "notes" partition.
-        let vault = vaults::init(
+        let partition = partitions::init(
             "notes".to_string(),
             "Notes".to_string(),
             root_path.join("notes"),
@@ -108,15 +108,15 @@ async fn setup_state() -> (AppState, u16) {
         ).await;
         let toml = "name = \"Notes\"\n";
         tokio::fs::write(root_path.join("notes").join("partition.toml"), toml).await.ok();
-        let mut map: HashMap<String, Arc<vaults::VaultState>> = HashMap::new();
-        map.insert("notes".to_string(), Arc::new(vault));
+        let mut map: HashMap<String, Arc<partitions::PartitionState>> = HashMap::new();
+        map.insert("notes".to_string(), Arc::new(partition));
         let active = "notes".to_string();
 
         let oidc_client = init_oidc(&cfg).await;
         return (AppState {
             root_path,
-            vaults: tokio::sync::RwLock::new(map),
-            active_vault: tokio::sync::RwLock::new(active),
+            partitions: tokio::sync::RwLock::new(map),
+            active_partition: tokio::sync::RwLock::new(active),
             password_hash: cfg.password.unwrap_or_default(),
             sessions: session::SessionStore::new(),
             api_key: cfg.api_key,
@@ -126,17 +126,17 @@ async fn setup_state() -> (AppState, u16) {
     }
 
     let active_slug = discovered[0].slug.clone();
-    let mut map: HashMap<String, Arc<vaults::VaultState>> = HashMap::new();
-    for v in discovered {
-        map.insert(v.slug.clone(), v);
+    let mut map: HashMap<String, Arc<partitions::PartitionState>> = HashMap::new();
+    for p in discovered {
+        map.insert(p.slug.clone(), p);
     }
 
     let oidc_client = init_oidc(&cfg).await;
 
     let state = AppState {
         root_path,
-        vaults: tokio::sync::RwLock::new(map),
-        active_vault: tokio::sync::RwLock::new(active_slug),
+        partitions: tokio::sync::RwLock::new(map),
+        active_partition: tokio::sync::RwLock::new(active_slug),
         password_hash: cfg.password.unwrap_or_default(),
         sessions: session::SessionStore::new(),
         api_key: cfg.api_key,
@@ -160,20 +160,20 @@ async fn init_oidc(cfg: &config::Config) -> Option<oidc::OidcClient> {
     }
 }
 
-/// Start one periodic sync task per vault that has sync configured.
+/// Start one periodic sync task per partition that has sync configured.
 fn start_sync_tasks(state: &Arc<AppState>) {
     // Collect sync configs synchronously by blocking briefly — startup only.
-    let vaults: Vec<(String, config::SyncConfig, std::path::PathBuf, sync::SharedSyncStatus)> = {
+    let sync_tasks: Vec<(String, config::SyncConfig, std::path::PathBuf, sync::SharedSyncStatus)> = {
         // We're in a sync context here (called from main before the runtime is
         // fully yielded), so use try_read which is always available at startup.
-        if let Ok(guard) = state.vaults.try_read() {
+        if let Ok(guard) = state.partitions.try_read() {
             guard.values()
-                .filter_map(|v| {
-                    v.sync_config.clone().map(|cfg| (
-                        v.slug.clone(),
+                .filter_map(|p| {
+                    p.sync_config.clone().map(|cfg| (
+                        p.slug.clone(),
                         cfg,
-                        v.storage_path.clone(),
-                        v.sync_status.clone(),
+                        p.storage_path.clone(),
+                        p.sync_status.clone(),
                     ))
                 })
                 .collect()
@@ -182,7 +182,7 @@ fn start_sync_tasks(state: &Arc<AppState>) {
         }
     };
 
-    for (slug, cfg, storage, status) in vaults {
+    for (slug, cfg, storage, status) in sync_tasks {
         let slug_log = slug.clone();
         tokio::spawn(async move {
             tracing::info!("Starting sync for partition '{}'", slug_log);
@@ -227,24 +227,24 @@ async fn no_cache(request: Request, next: Next) -> Response {
     response
 }
 
-// ── Sync API handlers (active vault) ─────────────────────────────────────────
+// ── Sync API handlers (active partition) ─────────────────────────────────────
 
 async fn get_sync_status(
     State(_state): State<Arc<AppState>>,
-    vaults::ActiveVault(vault): vaults::ActiveVault,
+    partitions::ActivePartition(partition): partitions::ActivePartition,
 ) -> Json<sync::SyncStatus> {
-    Json(vault.sync_status.lock().unwrap().clone())
+    Json(partition.sync_status.lock().unwrap().clone())
 }
 
 async fn trigger_sync(
     State(_state): State<Arc<AppState>>,
-    vaults::ActiveVault(vault): vaults::ActiveVault,
+    partitions::ActivePartition(partition): partitions::ActivePartition,
 ) -> StatusCode {
-    let Some(cfg) = vault.sync_config.clone() else {
+    let Some(cfg) = partition.sync_config.clone() else {
         return StatusCode::SERVICE_UNAVAILABLE;
     };
-    let storage = vault.storage_path.clone();
-    let status = vault.sync_status.clone();
+    let storage = partition.storage_path.clone();
+    let status = partition.sync_status.clone();
     tokio::spawn(async move {
         sync::run_sync(&cfg, &storage, &status).await;
     });
@@ -283,9 +283,9 @@ async fn run_server(state: Arc<AppState>, port: u16) {
         .route("/api/sync", post(trigger_sync))
         .route("/api/shares", get(shares::list_shares).post(shares::create_share))
         .route("/api/shares/{slug}", delete(shares::delete_share).patch(shares::update_share))
-        .route("/api/vaults", get(vaults::list_vaults).post(vaults::create_vault))
-        .route("/api/vaults/active", post(vaults::switch_vault))
-        .route("/api/vaults/{slug}", delete(vaults::delete_vault))
+        .route("/api/partitions", get(partitions::list_partitions).post(partitions::create_partition))
+        .route("/api/partitions/active", post(partitions::switch_partition))
+        .route("/api/partitions/{slug}", delete(partitions::delete_partition))
         .route("/auth/logout", post(auth::logout))
         .layer(middleware::from_fn_with_state(state.clone(), auth::middleware))
         .layer(middleware::from_fn(no_cache));

@@ -5,9 +5,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::{AppState, config::SyncConfig, db::Db, sync};
 
-// ── VaultState ────────────────────────────────────────────────────────────────
+// ── PartitionState ────────────────────────────────────────────────────────────
 
-pub struct VaultState {
+pub struct PartitionState {
     pub slug: String,
     pub name: String,
     pub storage_path: PathBuf,
@@ -20,7 +20,7 @@ pub struct VaultState {
 // ── API types ─────────────────────────────────────────────────────────────────
 
 #[derive(Serialize, Clone)]
-pub struct VaultInfo {
+pub struct PartitionInfo {
     pub slug: String,
     pub name: String,
     pub active: bool,
@@ -40,12 +40,11 @@ pub struct CreateRequest {
 // ── Discovery ─────────────────────────────────────────────────────────────────
 
 /// Scan `root` for subdirectories containing a `partition.toml`.
-/// Returns an ordered list (alphabetical by slug). Panics-safe: unknown dirs
-/// are silently skipped.
+/// Returns an ordered list (alphabetical by slug). Unknown dirs are silently skipped.
 pub async fn discover(
     root: &std::path::Path,
-    vault_tokens: &HashMap<String, String>,
-) -> Vec<Arc<VaultState>> {
+    partition_tokens: &HashMap<String, String>,
+) -> Vec<Arc<PartitionState>> {
     let mut entries: Vec<(String, PathBuf)> = Vec::new();
 
     if let Ok(mut rd) = tokio::fs::read_dir(root).await {
@@ -66,30 +65,30 @@ pub async fn discover(
 
     entries.sort_by(|a, b| a.0.cmp(&b.0));
 
-    let mut vaults = Vec::new();
+    let mut partitions = Vec::new();
     for (slug, path) in entries {
-        let partition = crate::partition::load(&path);
-        let name = partition.name.unwrap_or_else(|| slug.clone());
-        let mut sync_cfg = partition.sync;
+        let partition_cfg = crate::partition::load(&path);
+        let name = partition_cfg.name.unwrap_or_else(|| slug.clone());
+        let mut sync_cfg = partition_cfg.sync;
         if let Some(ref mut sync) = sync_cfg {
-            if let Some(token) = vault_tokens.get(&slug) {
+            if let Some(token) = partition_tokens.get(&slug) {
                 sync.token = token.clone();
             }
         }
-        let vault = init(slug, name, path, sync_cfg).await;
-        vaults.push(Arc::new(vault));
+        let partition = init(slug, name, path, sync_cfg).await;
+        partitions.push(Arc::new(partition));
     }
 
-    vaults
+    partitions
 }
 
-/// Initialise a single vault: create dirs, seed defaults, build index.
+/// Initialise a single partition: create dirs, seed defaults, build index.
 pub async fn init(
     slug: String,
     name: String,
     storage_path: PathBuf,
     sync_config: Option<SyncConfig>,
-) -> VaultState {
+) -> PartitionState {
     tokio::fs::create_dir_all(storage_path.join(".assets")).await.ok();
     tokio::fs::create_dir_all(storage_path.join(".drawings")).await.ok();
 
@@ -106,65 +105,73 @@ pub async fn init(
 
     let sync_status = sync::new_status(sync_config.is_some());
 
-    VaultState { slug, name, storage_path, db, backlink_index: tokio::sync::RwLock::new(backlink_index), sync_config, sync_status }
+    PartitionState {
+        slug,
+        name,
+        storage_path,
+        db,
+        backlink_index: tokio::sync::RwLock::new(backlink_index),
+        sync_config,
+        sync_status,
+    }
 }
 
 // ── Axum extractor ────────────────────────────────────────────────────────────
 
-/// Injects the currently active `VaultState` into a handler.
-pub struct ActiveVault(pub Arc<VaultState>);
+/// Injects the currently active `PartitionState` into a handler.
+pub struct ActivePartition(pub Arc<PartitionState>);
 
-impl axum::extract::FromRequestParts<Arc<AppState>> for ActiveVault {
+impl axum::extract::FromRequestParts<Arc<AppState>> for ActivePartition {
     type Rejection = (StatusCode, &'static str);
 
     async fn from_request_parts(
         _parts: &mut axum::http::request::Parts,
         state: &Arc<AppState>,
     ) -> Result<Self, Self::Rejection> {
-        let slug = state.active_vault.read().await.clone();
-        let vaults = state.vaults.read().await;
-        let vault = vaults
+        let slug = state.active_partition.read().await.clone();
+        let partitions = state.partitions.read().await;
+        let partition = partitions
             .get(&slug)
             .cloned()
-            .ok_or((StatusCode::INTERNAL_SERVER_ERROR, "active vault not found"))?;
-        Ok(ActiveVault(vault))
+            .ok_or((StatusCode::INTERNAL_SERVER_ERROR, "active partition not found"))?;
+        Ok(ActivePartition(partition))
     }
 }
 
 // ── API handlers ──────────────────────────────────────────────────────────────
 
-pub async fn list_vaults(State(state): State<Arc<AppState>>) -> Json<Vec<VaultInfo>> {
-    let active = state.active_vault.read().await.clone();
-    let vaults = state.vaults.read().await;
-    let mut infos: Vec<VaultInfo> = vaults
+pub async fn list_partitions(State(state): State<Arc<AppState>>) -> Json<Vec<PartitionInfo>> {
+    let active = state.active_partition.read().await.clone();
+    let partitions = state.partitions.read().await;
+    let mut infos: Vec<PartitionInfo> = partitions
         .values()
-        .map(|v| VaultInfo {
-            slug: v.slug.clone(),
-            name: v.name.clone(),
-            active: v.slug == active,
-            has_sync: v.sync_config.is_some(),
+        .map(|p| PartitionInfo {
+            slug: p.slug.clone(),
+            name: p.name.clone(),
+            active: p.slug == active,
+            has_sync: p.sync_config.is_some(),
         })
         .collect();
     infos.sort_by(|a, b| a.name.cmp(&b.name));
     Json(infos)
 }
 
-pub async fn switch_vault(
+pub async fn switch_partition(
     State(state): State<Arc<AppState>>,
     Json(body): Json<SwitchRequest>,
 ) -> StatusCode {
-    let exists = state.vaults.read().await.contains_key(&body.slug);
+    let exists = state.partitions.read().await.contains_key(&body.slug);
     if !exists {
         return StatusCode::NOT_FOUND;
     }
-    *state.active_vault.write().await = body.slug;
+    *state.active_partition.write().await = body.slug;
     StatusCode::NO_CONTENT
 }
 
-pub async fn create_vault(
+pub async fn create_partition(
     State(state): State<Arc<AppState>>,
     Json(body): Json<CreateRequest>,
-) -> Result<Json<VaultInfo>, StatusCode> {
+) -> Result<Json<PartitionInfo>, StatusCode> {
     let name = body.name.trim().to_string();
     if name.is_empty() {
         return Err(StatusCode::BAD_REQUEST);
@@ -180,46 +187,46 @@ pub async fn create_vault(
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    if state.vaults.read().await.contains_key(&slug) {
+    if state.partitions.read().await.contains_key(&slug) {
         return Err(StatusCode::CONFLICT);
     }
 
-    let vault_dir = state.root_path.join(&slug);
-    tokio::fs::create_dir_all(&vault_dir)
+    let partition_dir = state.root_path.join(&slug);
+    tokio::fs::create_dir_all(&partition_dir)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let toml = format!("name = \"{}\"\n", name.replace('"', "\\\""));
-    tokio::fs::write(vault_dir.join("partition.toml"), toml)
+    tokio::fs::write(partition_dir.join("partition.toml"), toml)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let vault = init(slug.clone(), name.clone(), vault_dir, None).await;
-    let info = VaultInfo { slug: slug.clone(), name, active: false, has_sync: false };
-    state.vaults.write().await.insert(slug, Arc::new(vault));
+    let partition = init(slug.clone(), name.clone(), partition_dir, None).await;
+    let info = PartitionInfo { slug: slug.clone(), name, active: false, has_sync: false };
+    state.partitions.write().await.insert(slug, Arc::new(partition));
 
     Ok(Json(info))
 }
 
-pub async fn delete_vault(
+pub async fn delete_partition(
     State(state): State<Arc<AppState>>,
     axum::extract::Path(slug): axum::extract::Path<String>,
 ) -> StatusCode {
-    let active = state.active_vault.read().await.clone();
+    let active = state.active_partition.read().await.clone();
     if active == slug {
         return StatusCode::CONFLICT;
     }
 
-    let vault_dir = {
-        let vaults = state.vaults.read().await;
-        match vaults.get(&slug) {
-            Some(v) => v.storage_path.clone(),
+    let partition_dir = {
+        let partitions = state.partitions.read().await;
+        match partitions.get(&slug) {
+            Some(p) => p.storage_path.clone(),
             None => return StatusCode::NOT_FOUND,
         }
     };
 
-    state.vaults.write().await.remove(&slug);
-    tokio::fs::remove_dir_all(&vault_dir).await.ok();
+    state.partitions.write().await.remove(&slug);
+    tokio::fs::remove_dir_all(&partition_dir).await.ok();
 
     StatusCode::NO_CONTENT
 }

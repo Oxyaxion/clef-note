@@ -171,7 +171,7 @@ password = "$argon2id$v=19$..."
 # Git sync tokens — one entry per partition (folder name = key).
 # Kept here, outside all partition directories, so tokens are never
 # accidentally committed to a git repository.
-# [vault_tokens]
+# [partition_tokens]
 # notes = "ghp_xxxx"
 # work  = "ghp_yyyy"
 
@@ -326,7 +326,7 @@ author_email     = "sync@local"
 # /home/user/clef-note.toml
 password = "$argon2id$..."
 
-[vault_tokens]
+[partition_tokens]
 notes = "ghp_personal_token_xxxx"   # key = partition folder name
 work  = "ghp_work_token_yyyy"
 ```
@@ -355,7 +355,7 @@ work  = "ghp_work_token_yyyy"
 # clef-note.toml
 password = "$argon2id$..."
 
-[vault_tokens]
+[partition_tokens]
 notes = "ghp_personal_xxxx"
 work  = "ghp_work_yyyy"
 ```

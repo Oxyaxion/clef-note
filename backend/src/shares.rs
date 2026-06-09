@@ -15,7 +15,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
-use crate::{AppState, notes::is_safe_note_name, vaults::ActiveVault};
+use crate::{AppState, notes::is_safe_note_name, partitions::ActivePartition};
 
 static DRAWING_RE: OnceLock<Regex> = OnceLock::new();
 static QUERY_RE: OnceLock<Regex> = OnceLock::new();
@@ -30,9 +30,9 @@ static MULTI_BLANK_RE: OnceLock<Regex> = OnceLock::new();
 pub struct Share {
     pub slug: String,
     pub note: String,
-    /// Vault slug the note belongs to. None for shares created before multi-vault.
+    /// Partition slug the note belongs to. None for legacy shares (fallback to first partition).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub vault: Option<String>,
+    pub partition: Option<String>,
     pub created_at: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<DateTime<Utc>>,
@@ -40,8 +40,8 @@ pub struct Share {
     pub password_hash: Option<String>,
 }
 
-/// .shares.json lives at the partitions root — global across all vaults so
-/// that public URLs stay stable when the user switches the active vault.
+/// .shares.json lives at the partitions root — global across all partitions so
+/// that public URLs stay stable when the user switches the active partition.
 fn shares_path(state: &AppState) -> std::path::PathBuf {
     state.root_path.join(".shares.json")
 }
@@ -114,7 +114,7 @@ pub struct CreateShareRequest {
 
 pub async fn create_share(
     State(state): State<Arc<AppState>>,
-    ActiveVault(vault): ActiveVault,
+    ActivePartition(partition): ActivePartition,
     Json(body): Json<CreateShareRequest>,
 ) -> impl IntoResponse {
     if !is_valid_slug(&body.slug) {
@@ -143,7 +143,7 @@ pub async fn create_share(
     let share = Share {
         slug: body.slug.clone(),
         note: body.note,
-        vault: Some(vault.slug.clone()),
+        partition: Some(partition.slug.clone()),
         created_at: Utc::now(),
         expires_at: body.expires_at,
         password_hash,
@@ -159,12 +159,12 @@ pub async fn create_share(
 
 pub async fn list_shares(
     State(state): State<Arc<AppState>>,
-    ActiveVault(vault): ActiveVault,
+    ActivePartition(partition): ActivePartition,
 ) -> Json<serde_json::Value> {
     let mut list: Vec<serde_json::Value> = load_shares(&state)
         .await
         .values()
-        .filter(|s| s.vault.as_deref() == Some(&vault.slug) || s.vault.is_none())
+        .filter(|s| s.partition.as_deref() == Some(&partition.slug) || s.partition.is_none())
         .map(share_view)
         .collect();
     list.sort_by(|a, b| {
@@ -277,16 +277,16 @@ pub async fn get_shared(
         state.login_guard.record_success(ip);
     }
 
-    // Resolve vault for this share (fall back to first vault for legacy shares)
-    let vault_slug = share.vault.clone();
+    // Resolve partition for this share (fall back to first partition for legacy shares)
+    let partition_slug = share.partition.clone();
     let storage_path = {
-        let vaults = state.vaults.read().await;
-        let vault = match &vault_slug {
-            Some(slug) => vaults.get(slug.as_str()),
-            None => vaults.values().next(),
+        let partitions = state.partitions.read().await;
+        let partition = match &partition_slug {
+            Some(slug) => partitions.get(slug.as_str()),
+            None => partitions.values().next(),
         };
-        match vault {
-            Some(v) => v.storage_path.clone(),
+        match partition {
+            Some(p) => p.storage_path.clone(),
             None => return StatusCode::NOT_FOUND.into_response(),
         }
     };

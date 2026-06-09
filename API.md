@@ -262,34 +262,34 @@ All note operations are scoped to the **active partition**. Use these endpoints 
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/vaults` | List all partitions |
-| `POST` | `/api/vaults` | Create a partition |
-| `POST` | `/api/vaults/active` | Switch active partition |
-| `DELETE` | `/api/vaults/{slug}` | Delete a partition (must not be active) |
+| `GET` | `/api/partitions` | List all partitions |
+| `POST` | `/api/partitions` | Create a partition |
+| `POST` | `/api/partitions/active` | Switch active partition |
+| `DELETE` | `/api/partitions/{slug}` | Delete a partition (must not be active) |
 
 ```bash
 # List partitions
-curl -s "$CN_URL/api/vaults" \
+curl -s "$CN_URL/api/partitions" \
   -H "Authorization: Bearer $CN_KEY" | jq '.'
 
 # Create a partition
-curl -s -X POST "$CN_URL/api/vaults" \
+curl -s -X POST "$CN_URL/api/partitions" \
   -H "Authorization: Bearer $CN_KEY" \
   -H "Content-Type: application/json" \
   -d '{"name": "Work"}' | jq '.'
 
 # Switch active partition
-curl -s -X POST "$CN_URL/api/vaults/active" \
+curl -s -X POST "$CN_URL/api/partitions/active" \
   -H "Authorization: Bearer $CN_KEY" \
   -H "Content-Type: application/json" \
   -d '{"slug": "work"}'
 
 # Delete a partition (irreversible — deletes all notes inside)
-curl -s -X DELETE "$CN_URL/api/vaults/work" \
+curl -s -X DELETE "$CN_URL/api/partitions/work" \
   -H "Authorization: Bearer $CN_KEY"
 ```
 
-**`GET /api/vaults` response:**
+**`GET /api/partitions` response:**
 
 ```json
 [
@@ -298,9 +298,9 @@ curl -s -X DELETE "$CN_URL/api/vaults/work" \
 ]
 ```
 
-**`POST /api/vaults` body:** `{ "name": "Work" }` — the slug is derived automatically (`"My Notes"` → `"my-notes"`).
+**`POST /api/partitions` body:** `{ "name": "Work" }` — the slug is derived automatically (`"My Notes"` → `"my-notes"`).
 
-**`DELETE /api/vaults/{slug}` status codes:**
+**`DELETE /api/partitions/{slug}` status codes:**
 
 | Code | Meaning |
 |---|---|

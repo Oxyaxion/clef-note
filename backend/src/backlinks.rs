@@ -3,7 +3,7 @@ use axum::{extract::{Path as AxumPath, State}, http::StatusCode, response::Json}
 use regex::Regex;
 use serde::Serialize;
 
-use crate::{AppState, vaults::ActiveVault};
+use crate::{AppState, partitions::ActivePartition};
 
 #[derive(Default)]
 pub struct BacklinkIndex {
@@ -94,7 +94,7 @@ pub struct BacklinksResponse {
 
 pub async fn get_backlinks(
     State(_state): State<Arc<AppState>>,
-    ActiveVault(vault): ActiveVault,
+    ActivePartition(vault): ActivePartition,
     AxumPath(name): AxumPath<String>,
 ) -> Result<Json<BacklinksResponse>, StatusCode> {
     let index = vault.backlink_index.read().await;

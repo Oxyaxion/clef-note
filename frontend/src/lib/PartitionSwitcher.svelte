@@ -1,14 +1,14 @@
 <script lang="ts">
-	import { createVault, deleteVault, switchVault, type VaultInfo } from './api';
+	import { createPartition, deletePartition, switchPartition, type PartitionInfo } from './api';
 
 	interface Props {
-		vaults: VaultInfo[];
+		partitions: PartitionInfo[];
 		onSwitch: (slug: string) => void;
-		onCreated: (vault: VaultInfo) => void;
+		onCreated: (partition: PartitionInfo) => void;
 		onDeleted: (slug: string) => void;
 	}
 
-	let { vaults, onSwitch, onCreated, onDeleted }: Props = $props();
+	let { partitions, onSwitch, onCreated, onDeleted }: Props = $props();
 
 	let open = $state(false);
 	let creating = $state(false);
@@ -18,7 +18,7 @@
 	let confirmDelete = $state<string | null>(null);
 	let deleteConfirmName = $state('');
 
-	const active = $derived(vaults.find(v => v.active));
+	const active = $derived(partitions.find(v => v.active));
 
 	function toggle() { open = !open; }
 
@@ -34,7 +34,7 @@
 	async function doSwitch(slug: string) {
 		if (slug === active?.slug) { close(); return; }
 		try {
-			await switchVault(slug);
+			await switchPartition(slug);
 			onSwitch(slug);
 			close();
 		} catch {
@@ -48,8 +48,8 @@
 		createLoading = true;
 		createError = '';
 		try {
-			const vault = await createVault(name);
-			onCreated(vault);
+			const partition = await createPartition(name);
+			onCreated(partition);
 			newName = '';
 			creating = false;
 		} catch (e: unknown) {
@@ -66,10 +66,10 @@
 
 	async function doDelete() {
 		if (!confirmDelete) return;
-		const vault = vaults.find(v => v.slug === confirmDelete);
-		if (!vault || deleteConfirmName !== vault.name) return;
+		const partition = partitions.find(v => v.slug === confirmDelete);
+		if (!partition || deleteConfirmName !== partition.name) return;
 		try {
-			await deleteVault(confirmDelete);
+			await deletePartition(confirmDelete);
 			onDeleted(confirmDelete);
 			confirmDelete = null;
 			deleteConfirmName = '';
@@ -102,34 +102,34 @@
 	{#if open}
 		<div class="dropdown" role="listbox">
 			<div class="dropdown-list">
-				{#each vaults as vault (vault.slug)}
+				{#each partitions as partition (partition.slug)}
 					<div class="vault-row">
 						<button
 							class="vault-item"
-							class:active={vault.active}
+							class:active={partition.active}
 							role="option"
-							aria-selected={vault.active}
-							onclick={() => doSwitch(vault.slug)}
+							aria-selected={partition.active}
+							onclick={() => doSwitch(partition.slug)}
 						>
-							<span class="vault-item-name">{vault.name}</span>
-							{#if vault.has_sync}
+							<span class="vault-item-name">{partition.name}</span>
+							{#if partition.has_sync}
 								<svg class="sync-dot" width="8" height="8" viewBox="0 0 10 10" fill="none" aria-label="synced" title="Git sync enabled">
 									<circle cx="5" cy="5" r="3.5" stroke="currentColor" stroke-width="1.2"/>
 									<path d="M3.5 5l1 1 2-2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
 								</svg>
 							{/if}
-							{#if vault.active}
+							{#if partition.active}
 								<svg class="check" width="10" height="10" viewBox="0 0 10 8" fill="none" aria-hidden="true">
 									<path d="M1 4l3 3L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
 								</svg>
 							{/if}
 						</button>
-						{#if !vault.active}
+						{#if !partition.active}
 							<button
 								class="delete-btn"
-								onclick={() => askDelete(vault.slug)}
+								onclick={() => askDelete(partition.slug)}
 								title="Delete partition"
-								aria-label="Delete partition {vault.name}"
+								aria-label="Delete partition {partition.name}"
 							>
 								<svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true">
 									<path d="M2 2l6 6M8 2L2 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
@@ -172,15 +172,15 @@
 </div>
 
 {#if confirmDelete}
-	{@const vault = vaults.find(v => v.slug === confirmDelete)}
-	{#if vault}
+	{@const partition = partitions.find(v => v.slug === confirmDelete)}
+	{#if partition}
 		<div class="confirm-overlay">
 			<div class="confirm-dialog">
-				<p class="confirm-title">Delete <strong>{vault.name}</strong>?</p>
+				<p class="confirm-title">Delete <strong>{partition.name}</strong>?</p>
 				<p class="confirm-desc">This will permanently delete all notes, assets and drawings in this partition. Type the partition name to confirm.</p>
 				<input
 					bind:value={deleteConfirmName}
-					placeholder={vault.name}
+					placeholder={partition.name}
 					use:focus
 					class="confirm-input"
 					onkeydown={(e) => e.key === 'Escape' && (confirmDelete = null)}
@@ -189,7 +189,7 @@
 					<button class="confirm-cancel" onclick={() => (confirmDelete = null)}>Cancel</button>
 					<button
 						class="confirm-delete"
-						disabled={deleteConfirmName !== vault.name}
+						disabled={deleteConfirmName !== partition.name}
 						onclick={doDelete}
 					>Delete</button>
 				</div>

@@ -1,15 +1,15 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import type { NoteMeta, VaultInfo } from './api';
+	import type { NoteMeta, PartitionInfo } from './api';
 	import { buildTree, flatten, type DisplayItem } from './sidebarTree';
 	import { storage } from './storage';
 	import { escapeHtml } from './utils';
-	import VaultSwitcher from './VaultSwitcher.svelte';
+	import PartitionSwitcher from './PartitionSwitcher.svelte';
 
 	interface Props {
 		notes: NoteMeta[];
 		selected: string | null;
-		vaults?: VaultInfo[];
+		partitions?: PartitionInfo[];
 		mobileOpen?: boolean;
 		startCreating?: boolean;
 		hidden?: boolean;
@@ -18,12 +18,12 @@
 		onMobileClose?: () => void;
 		onCreateStarted?: () => void;
 		onSettings?: () => void;
-		onVaultSwitch?: (slug: string) => void;
-		onVaultCreated?: (vault: VaultInfo) => void;
-		onVaultDeleted?: (slug: string) => void;
+		onPartitionSwitch?: (slug: string) => void;
+		onPartitionCreated?: (partition: PartitionInfo) => void;
+		onPartitionDeleted?: (slug: string) => void;
 	}
 
-	let { notes, selected, vaults = [], mobileOpen = false, startCreating = false, hidden = false, onSelect, onNew, onMobileClose, onCreateStarted, onSettings, onVaultSwitch, onVaultCreated, onVaultDeleted }: Props = $props();
+	let { notes, selected, partitions = [], mobileOpen = false, startCreating = false, hidden = false, onSelect, onNew, onMobileClose, onCreateStarted, onSettings, onPartitionSwitch, onPartitionCreated, onPartitionDeleted }: Props = $props();
 
 	$effect(() => {
 		if (startCreating) {
@@ -138,15 +138,15 @@
 	<div class="sidebar-head">
 		{#if !collapsed}
 			<div class="vault-area">
-				{#if vaults.length > 0 && (onVaultSwitch || onVaultCreated || onVaultDeleted)}
-					<VaultSwitcher
-						{vaults}
-						onSwitch={(slug) => onVaultSwitch?.(slug)}
-						onCreated={(vault) => onVaultCreated?.(vault)}
-						onDeleted={(slug) => onVaultDeleted?.(slug)}
+				{#if partitions.length > 0 && (onPartitionSwitch || onPartitionCreated || onPartitionDeleted)}
+					<PartitionSwitcher
+						{partitions}
+						onSwitch={(slug) => onPartitionSwitch?.(slug)}
+						onCreated={(partition) => onPartitionCreated?.(partition)}
+						onDeleted={(slug) => onPartitionDeleted?.(slug)}
 					/>
 				{:else}
-					<span class="vault-name">{vaults.find(v => v.active)?.name ?? 'Notes'}</span>
+					<span class="vault-name">{partitions.find(v => v.active)?.name ?? 'Notes'}</span>
 				{/if}
 			</div>
 			<div class="head-actions">

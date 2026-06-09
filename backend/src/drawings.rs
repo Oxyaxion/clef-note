@@ -6,11 +6,11 @@ use axum::{
     response::IntoResponse,
 };
 
-use crate::{AppState, notes::is_safe_note_name, vaults::ActiveVault};
+use crate::{AppState, notes::is_safe_note_name, partitions::ActivePartition};
 
 pub async fn list_drawings(
     State(_state): State<Arc<AppState>>,
-    ActiveVault(vault): ActiveVault,
+    ActivePartition(vault): ActivePartition,
 ) -> impl IntoResponse {
     let dir = vault.storage_path.join(".drawings");
     let names: Vec<String> = tokio::task::spawn_blocking(move || {
@@ -35,7 +35,7 @@ pub async fn list_drawings(
 
 pub async fn get_drawing(
     State(_state): State<Arc<AppState>>,
-    ActiveVault(vault): ActiveVault,
+    ActivePartition(vault): ActivePartition,
     Path(name): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
     if !is_safe_note_name(&name) {
@@ -48,7 +48,7 @@ pub async fn get_drawing(
 
 pub async fn put_drawing(
     State(_state): State<Arc<AppState>>,
-    ActiveVault(vault): ActiveVault,
+    ActivePartition(vault): ActivePartition,
     Path(name): Path<String>,
     body: axum::body::Bytes,
 ) -> Result<StatusCode, StatusCode> {
@@ -65,7 +65,7 @@ pub async fn put_drawing(
 
 pub async fn delete_drawing(
     State(_state): State<Arc<AppState>>,
-    ActiveVault(vault): ActiveVault,
+    ActivePartition(vault): ActivePartition,
     Path(name): Path<String>,
 ) -> StatusCode {
     if !is_safe_note_name(&name) {
@@ -79,7 +79,7 @@ pub async fn delete_drawing(
 
 pub async fn get_preview(
     State(_state): State<Arc<AppState>>,
-    ActiveVault(vault): ActiveVault,
+    ActivePartition(vault): ActivePartition,
     Path(name): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
     if !is_safe_note_name(&name) {
@@ -92,7 +92,7 @@ pub async fn get_preview(
 
 pub async fn put_preview(
     State(_state): State<Arc<AppState>>,
-    ActiveVault(vault): ActiveVault,
+    ActivePartition(vault): ActivePartition,
     Path(name): Path<String>,
     body: axum::body::Bytes,
 ) -> Result<StatusCode, StatusCode> {

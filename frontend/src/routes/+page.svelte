@@ -15,14 +15,14 @@
 		saveNote,
 		deleteNote,
 		getSettings,
-		listVaults,
+		listPartitions,
 		serializeFrontmatter,
 		session,
 		logout,
 		exchangeOidcCode,
 		type NoteMeta,
 		type Frontmatter,
-		type VaultInfo,
+		type PartitionInfo,
 	} from '$lib/api';
 	import { loadTheme, applyTheme, type ThemeId } from '$lib/theme';
 	import { applySettings, DEFAULT, type AppSettings } from '$lib/settings';
@@ -58,7 +58,7 @@
 	let isMobile = $state(false);
 	let creatingFromPalette = $state(false);
 	let currentTheme = $state<ThemeId>('default');
-	let vaults = $state<VaultInfo[]>([]);
+	let partitions = $state<PartitionInfo[]>([]);
 	let loggedIn = $state(session.exists());
 	let oidcError = $state<string | null>(null);
 	let settingsOpen = $state(false);
@@ -142,9 +142,9 @@
 	// Re-run when loggedIn changes: fetch initial notes + settings + vaults.
 	$effect(() => {
 		if (!loggedIn) return;
-		Promise.all([listNotes(), getSettings(), listVaults()]).then(([n, raw, v]) => {
+		Promise.all([listNotes(), getSettings(), listPartitions()]).then(([n, raw, v]) => {
 			notes = n;
-			vaults = v;
+			partitions = v;
 			const s: AppSettings = { ...DEFAULT, ...(raw as Partial<AppSettings>) };
 			currentSettings = s;
 			applySettings(s);
@@ -313,16 +313,16 @@
 		setDateFormat(s.dateFormat ?? 'long-en');
 	}
 
-	async function handleVaultSwitch(slug: string) {
-		// The backend has already switched the active vault; reload notes.
+	async function handlePartitionSwitch(slug: string) {
+		// The backend has already switched the active partition; reload notes.
 		autoSave.flush();
 		selected = null;
 		noteContent = '';
 		noteFrontmatter = {};
 		try {
-			const [n, v] = await Promise.all([listNotes(), listVaults()]);
+			const [n, v] = await Promise.all([listNotes(), listPartitions()]);
 			notes = n;
-			vaults = v;
+			partitions = v;
 			const home = currentSettings.homePage?.trim();
 			if (home) selectNote(home).catch(() => {});
 		} catch {
@@ -330,12 +330,12 @@
 		}
 	}
 
-	function handleVaultCreated(vault: VaultInfo) {
-		vaults = [...vaults, vault];
+	function handlePartitionCreated(partition: PartitionInfo) {
+		partitions = [...partitions, partition];
 	}
 
-	function handleVaultDeleted(slug: string) {
-		vaults = vaults.filter(v => v.slug !== slug);
+	function handlePartitionDeleted(slug: string) {
+		partitions = partitions.filter(p => p.slug !== slug);
 	}
 
 	function onGlobalKeydown(e: KeyboardEvent) {
@@ -394,7 +394,7 @@
 		{noteMarkdown}
 		{rawView}
 		{currentTheme}
-		{vaults}
+		{partitions}
 		onSelect={selectNote}
 		onClose={() => (paletteOpen = false)}
 		onNewNote={() => {
@@ -408,7 +408,7 @@
 		onSettings={() => (settingsOpen = true)}
 		onMediaLibrary={() => (metaPageOpen = true)}
 		onShare={selected ? () => (shareModalOpen = true) : undefined}
-		onVaultSwitch={handleVaultSwitch}
+		onPartitionSwitch={handlePartitionSwitch}
 	/>
 {/if}
 
@@ -427,7 +427,7 @@
 	<Sidebar
 		{notes}
 		{selected}
-		{vaults}
+		{partitions}
 		mobileOpen={sidebarOpen}
 		startCreating={creatingFromPalette}
 		hidden={focusMode && !isMobile}
@@ -436,9 +436,9 @@
 		onMobileClose={() => (sidebarOpen = false)}
 		onCreateStarted={() => (creatingFromPalette = false)}
 		onSettings={() => { sidebarOpen = false; settingsOpen = true; }}
-		onVaultSwitch={handleVaultSwitch}
-		onVaultCreated={handleVaultCreated}
-		onVaultDeleted={handleVaultDeleted}
+		onPartitionSwitch={handlePartitionSwitch}
+		onPartitionCreated={handlePartitionCreated}
+		onPartitionDeleted={handlePartitionDeleted}
 	/>
 
 	<main class="main">

@@ -10,7 +10,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use axum::extract::Query as AxumQuery;
-use crate::{AppState, db::{NoteMeta, NoteStub}, vaults::ActiveVault};
+use crate::{AppState, db::{NoteMeta, NoteStub}, partitions::ActivePartition};
 
 fn to_500<E: std::fmt::Display>(e: E) -> StatusCode {
     tracing::error!("internal error: {e}");
@@ -44,7 +44,7 @@ fn default_max_bytes() -> usize { 500 }
 
 pub async fn list_stubs(
     State(_state): State<Arc<AppState>>,
-    ActiveVault(vault): ActiveVault,
+    ActivePartition(vault): ActivePartition,
     AxumQuery(params): AxumQuery<StubsQuery>,
 ) -> Json<Vec<NoteStub>> {
     Json(vault.db.stubs(params.max_bytes))
@@ -52,7 +52,7 @@ pub async fn list_stubs(
 
 pub async fn get_media_usage(
     State(_state): State<Arc<AppState>>,
-    ActiveVault(vault): ActiveVault,
+    ActivePartition(vault): ActivePartition,
 ) -> Json<MediaUsage> {
     let (assets_set, drawings_set) = vault.db.get_media_usage();
     let mut used_assets: Vec<String> = assets_set.into_iter().collect();
@@ -69,7 +69,7 @@ pub struct RenameBody {
 
 pub async fn list_notes(
     State(_state): State<Arc<AppState>>,
-    ActiveVault(vault): ActiveVault,
+    ActivePartition(vault): ActivePartition,
 ) -> Result<Json<Vec<NoteMeta>>, StatusCode> {
     let db = vault.db.clone();
     let mut notes: Vec<NoteMeta> = tokio::task::spawn_blocking(move || db.list_all_meta())
@@ -103,7 +103,7 @@ pub fn read_mtime(path: &std::path::Path) -> i64 {
 
 pub async fn get_note(
     State(_state): State<Arc<AppState>>,
-    ActiveVault(vault): ActiveVault,
+    ActivePartition(vault): ActivePartition,
     Path(name): Path<String>,
 ) -> Result<Json<NoteContent>, StatusCode> {
     if !is_safe_note_name(&name) {
@@ -124,7 +124,7 @@ pub async fn get_note(
 
 pub async fn put_note(
     State(_state): State<Arc<AppState>>,
-    ActiveVault(vault): ActiveVault,
+    ActivePartition(vault): ActivePartition,
     Path(name): Path<String>,
     Json(body): Json<PutNoteBody>,
 ) -> Result<StatusCode, StatusCode> {
@@ -164,7 +164,7 @@ pub struct AssetResponse {
 
 pub async fn rename_note(
     State(_state): State<Arc<AppState>>,
-    ActiveVault(vault): ActiveVault,
+    ActivePartition(vault): ActivePartition,
     Path(name): Path<String>,
     Json(body): Json<RenameBody>,
 ) -> Result<StatusCode, StatusCode> {
@@ -217,7 +217,7 @@ pub async fn rename_note(
 
 pub async fn delete_note(
     State(_state): State<Arc<AppState>>,
-    ActiveVault(vault): ActiveVault,
+    ActivePartition(vault): ActivePartition,
     Path(name): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
     if !is_safe_note_name(&name) {
@@ -242,7 +242,7 @@ pub async fn delete_note(
 
 pub async fn upload_asset(
     State(_state): State<Arc<AppState>>,
-    ActiveVault(vault): ActiveVault,
+    ActivePartition(vault): ActivePartition,
     mut multipart: Multipart,
 ) -> Result<Json<AssetResponse>, StatusCode> {
     if let Ok(Some(field)) = multipart.next_field().await {
@@ -259,7 +259,7 @@ pub async fn upload_asset(
 
 pub async fn serve_asset(
     State(_state): State<Arc<AppState>>,
-    ActiveVault(vault): ActiveVault,
+    ActivePartition(vault): ActivePartition,
     Path(filename): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let safe_name = sanitize_filename(&filename);
@@ -285,7 +285,7 @@ pub struct AssetMeta {
 
 pub async fn list_assets(
     State(_state): State<Arc<AppState>>,
-    ActiveVault(vault): ActiveVault,
+    ActivePartition(vault): ActivePartition,
 ) -> impl IntoResponse {
     let dir = vault.storage_path.join(".assets");
     let assets: Vec<AssetMeta> = tokio::task::spawn_blocking(move || {
@@ -309,7 +309,7 @@ pub async fn list_assets(
 
 pub async fn delete_asset(
     State(_state): State<Arc<AppState>>,
-    ActiveVault(vault): ActiveVault,
+    ActivePartition(vault): ActivePartition,
     Path(filename): Path<String>,
 ) -> StatusCode {
     let path = vault.storage_path.join(".assets").join(sanitize_filename(&filename));

@@ -3,32 +3,38 @@
 
 # Required — web UI password (Argon2 hash).
 # Generate with: ./clef-note --hash-password "yourpassword"
+# Not required when [oidc] is configured.
 password = "$argon2id$v=19$..."
 
-# Optional — storage directory.
-# Default: ../storage relative to the binary.
-# Can also be overridden at runtime with: ./clef-note --storage /mnt/notes
-# storage = "/mnt/notes"
+# Partitions root directory — optional. Defaults to ../partitions (relative to the binary).
+# Can be overridden at runtime with: ./clef-note --partitions /mnt/notes
+# partitions = "/mnt/notes"
 
-# Optional — listening port. Default: 3000.
-# Can also be overridden at runtime with: ./clef-note --port 8080
+# Port — optional. Defaults to 3000.
+# Can be overridden at runtime with: ./clef-note --port 8080
 # port = 3000
 
-# Optional — API key for programmatic access (CLI scripts/an, REST, OpenAPI).
+# API key — optional. For programmatic access (CLI, REST, OpenAI tools…).
 # Generate with: openssl rand -hex 32
 # api_key = ""
 
-# Optional — git sync. Synchronise storage/ with a remote repository.
-# Supports GitHub, Gitea, Forgejo, GitLab (HTTPS + personal access token).
+# Git sync tokens — one entry per partition slug (folder name = key).
+# The token is kept here (outside any partition directory) so it is never
+# accidentally committed to a git repository.
+# Configure the [sync] block in each partition's partition.toml for remote/branch/interval.
 #
-# GitHub token: Settings → Developer settings → Personal access tokens
-#               → Fine-grained → Contents: Read and write
-# Gitea/Forgejo: User Settings → Applications → Generate token
-#
-# [sync]
-# remote           = "https://github.com/you/notes.git"
-# branch           = "main"
-# token            = "ghp_xxxx"
-# interval_minutes = 30        # 0 = manual only (Settings → Git Sync → Sync now)
-# author_name      = "clef-note"    # optional — git commit author name
-# author_email     = "sync@local"   # optional — git commit author email
+# [partition_tokens]
+# notes = "ghp_xxxx"
+# work  = "ghp_yyyy"
+
+# OIDC — optional. Delegate authentication to an external provider.
+# Works with Authelia, Authentik, Keycloak, and any OIDC-compliant provider.
+# When [oidc] is configured, the password field above is not required.
+# [oidc]
+# issuer_url    = "https://auth.example.com"
+# client_id     = "clef-note"
+# client_secret = "..."
+# redirect_uri  = "https://notes.example.com/auth/oidc/callback"
+# allowed_email = "user@example.com"           # restrict to a single user (optional)
+# provider_name = "Authelia"                   # label shown on the login button (optional)
+# disable_password_login = true                # hide password form when OIDC is active (optional)
