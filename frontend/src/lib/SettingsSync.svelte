@@ -47,14 +47,20 @@
 			<p class="section-desc">Loading…</p>
 		{:else if !status.configured}
 			<p class="section-desc">
-				Git sync is not configured. Add a <code>[sync]</code> section to
-				<code>clef-note.toml</code> and restart the server.
+				Git sync is not configured for this partition. Add a <code>[sync]</code> section
+				to the partition's <code>partition.toml</code> and the token to
+				<code>clef-note.toml</code>, then restart the server.
 			</p>
+			<p class="section-desc example-label">In <code>partition.toml</code> (inside the partition folder):</p>
 			<pre class="example">[sync]
 remote = "https://github.com/you/notes.git"
 branch = "main"
-token  = "ghp_xxxx"
-interval_minutes = 30</pre>
+interval_minutes = 30
+# author_name  = "clef-note"
+# author_email = "sync@local"</pre>
+			<p class="section-desc example-label">In <code>clef-note.toml</code> (outside all partitions — never committed):</p>
+			<pre class="example">[vault_tokens]
+notes = "ghp_xxxx"   # key = partition folder name</pre>
 		{:else}
 			<div class="status-block">
 				<div class="status-row">
@@ -135,6 +141,10 @@ interval_minutes = 30</pre>
 		font-size: 0.8rem;
 		color: var(--muted);
 		line-height: 1.5;
+	}
+
+	.example-label {
+		margin: 0;
 	}
 
 	section code {
