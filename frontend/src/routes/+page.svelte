@@ -59,6 +59,7 @@
 	let creatingFromPalette = $state(false);
 	let currentTheme = $state<ThemeId>('default');
 	let partitions = $state<PartitionInfo[]>([]);
+	const activePartitionSlug = $derived(partitions.find(p => p.active)?.slug ?? '');
 	let loggedIn = $state(session.exists());
 	let oidcError = $state<string | null>(null);
 	let settingsOpen = $state(false);
@@ -149,7 +150,7 @@
 			currentSettings = s;
 			applySettings(s);
 			setDateFormat(s.dateFormat ?? 'long-en');
-			const home = s.homePage?.trim();
+			const home = s.homePages?.[partitions.find(p => p.active)?.slug ?? '']?.trim();
 			if (home) selectNote(home).catch(() => {});
 		});
 	});
@@ -209,7 +210,7 @@
 	}
 
 	function goHome() {
-		const home = currentSettings.homePage?.trim();
+		const home = currentSettings.homePages?.[activePartitionSlug]?.trim();
 		if (!home) return;
 		selectNote(home);
 	}
@@ -323,7 +324,7 @@
 			const [n, v] = await Promise.all([listNotes(), listPartitions()]);
 			notes = n;
 			partitions = v;
-			const home = currentSettings.homePage?.trim();
+			const home = currentSettings.homePages?.[slug]?.trim();
 			if (home) selectNote(home).catch(() => {});
 		} catch {
 			// ignore — user can retry
@@ -379,6 +380,7 @@
 {#if settingsOpen}
 	<Settings
 		{currentTheme}
+		{activePartitionSlug}
 		initialSettings={currentSettings}
 		onClose={() => (settingsOpen = false)}
 		onSetTheme={(id) => { currentTheme = id; applyTheme(id); }}

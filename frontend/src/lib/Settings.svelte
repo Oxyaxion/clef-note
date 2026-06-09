@@ -11,6 +11,7 @@
 
 	interface Props {
 		currentTheme: ThemeId;
+		activePartitionSlug?: string;
 		onClose: () => void;
 		onSetTheme: (id: ThemeId) => void;
 		onLogout: () => void;
@@ -18,7 +19,7 @@
 		initialSettings?: AppSettings;
 	}
 
-	let { currentTheme, onClose, onSetTheme, onLogout, onSettingsChange, initialSettings = DEFAULT }: Props = $props();
+	let { currentTheme, activePartitionSlug = '', onClose, onSetTheme, onLogout, onSettingsChange, initialSettings = DEFAULT }: Props = $props();
 
 	let settings = $state<AppSettings>({ ...untrack(() => initialSettings) });
 	const debouncedSave = debounce(() => putSettings(settings), 400);
@@ -63,7 +64,7 @@
 		</div>
 
 		<div class="modal-body">
-			<SettingsGeneral bind:settings {onChange} />
+			<SettingsGeneral bind:settings {activePartitionSlug} {onChange} />
 			<SettingsAppearance bind:settings {currentTheme} {onSetTheme} {onChange} {onReset} />
 			<SettingsSecurity />
 			<SettingsSync />

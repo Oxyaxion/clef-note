@@ -3,7 +3,7 @@ export interface AppSettings {
     fontSize: number;    // rem, e.g. 1.1
     lineHeight: number;  // e.g. 1.7
     customCss: string;
-    homePage: string;
+    homePages: Record<string, string>;
     dateFormat: string;
     mobileReadOnly: boolean;
 }
@@ -27,7 +27,7 @@ export const DEFAULT: AppSettings = {
     fontSize: 1.1,
     lineHeight: 1.7,
     customCss: '',
-    homePage: '',
+    homePages: {},
     dateFormat: 'long-en',
     mobileReadOnly: false,
 };

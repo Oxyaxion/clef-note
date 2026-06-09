@@ -3,10 +3,18 @@
 
 	interface Props {
 		settings: AppSettings;
+		activePartitionSlug?: string;
 		onChange: () => void;
 	}
 
-	let { settings = $bindable(), onChange }: Props = $props();
+	let { settings = $bindable(), activePartitionSlug = '', onChange }: Props = $props();
+
+	function onHomeInput(e: Event) {
+		const val = (e.target as HTMLInputElement).value;
+		if (!activePartitionSlug) return;
+		settings.homePages = { ...settings.homePages, [activePartitionSlug]: val };
+		onChange();
+	}
 </script>
 
 <section>
@@ -20,10 +28,11 @@
 			<input
 				class="text-input"
 				type="text"
-				bind:value={settings.homePage}
-				oninput={onChange}
+				value={settings.homePages?.[activePartitionSlug] ?? ''}
+				oninput={onHomeInput}
 				placeholder="note name"
 				autocomplete="off"
+				disabled={!activePartitionSlug}
 			/>
 		</div>
 		<div class="setting-row">
