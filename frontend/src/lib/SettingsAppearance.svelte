@@ -213,8 +213,8 @@
 		background: transparent;
 		border: none;
 		border-right: 1px solid var(--border);
-		padding: 0.2rem 0.55rem;
-		font-size: 0.75rem;
+		padding: 0.25rem 0.75rem;
+		font-size: 0.78rem;
 		color: var(--muted);
 		cursor: pointer;
 		font-family: inherit;
