@@ -12,7 +12,10 @@
 	function onHomeInput(e: Event) {
 		const val = (e.target as HTMLInputElement).value;
 		if (!activePartitionSlug) return;
-		settings.homePages = { ...settings.homePages, [activePartitionSlug]: val };
+		settings.partitions = {
+			...settings.partitions,
+			[activePartitionSlug]: { ...settings.partitions?.[activePartitionSlug], homePage: val },
+		};
 		onChange();
 	}
 </script>
@@ -28,7 +31,7 @@
 			<input
 				class="text-input"
 				type="text"
-				value={settings.homePages?.[activePartitionSlug] ?? ''}
+				value={settings.partitions?.[activePartitionSlug]?.homePage ?? ''}
 				oninput={onHomeInput}
 				placeholder="note name"
 				autocomplete="off"

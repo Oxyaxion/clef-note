@@ -1,9 +1,13 @@
+export interface PartitionSettings {
+    homePage?: string;
+}
+
 export interface AppSettings {
     fontFamily: string;
     fontSize: number;    // rem, e.g. 1.1
     lineHeight: number;  // e.g. 1.7
     customCss: string;
-    homePages: Record<string, string>;
+    partitions: Record<string, PartitionSettings>;
     dateFormat: string;
     mobileReadOnly: boolean;
 }
@@ -27,7 +31,7 @@ export const DEFAULT: AppSettings = {
     fontSize: 1.1,
     lineHeight: 1.7,
     customCss: '',
-    homePages: {},
+    partitions: {},
     dateFormat: 'long-en',
     mobileReadOnly: false,
 };

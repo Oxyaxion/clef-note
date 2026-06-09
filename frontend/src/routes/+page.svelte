@@ -150,7 +150,7 @@
 			currentSettings = s;
 			applySettings(s);
 			setDateFormat(s.dateFormat ?? 'long-en');
-			const home = s.homePages?.[partitions.find(p => p.active)?.slug ?? '']?.trim();
+			const home = s.partitions?.[partitions.find(p => p.active)?.slug ?? '']?.homePage?.trim();
 			if (home) selectNote(home).catch(() => {});
 		});
 	});
@@ -210,7 +210,7 @@
 	}
 
 	function goHome() {
-		const home = currentSettings.homePages?.[activePartitionSlug]?.trim();
+		const home = currentSettings.partitions?.[activePartitionSlug]?.homePage?.trim();
 		if (!home) return;
 		selectNote(home);
 	}
@@ -324,7 +324,7 @@
 			const [n, v] = await Promise.all([listNotes(), listPartitions()]);
 			notes = n;
 			partitions = v;
-			const home = currentSettings.homePages?.[slug]?.trim();
+			const home = currentSettings.partitions?.[slug]?.homePage?.trim();
 			if (home) selectNote(home).catch(() => {});
 		} catch {
 			// ignore — user can retry
