@@ -66,6 +66,15 @@
 			<SettingsAppearance bind:settings {activePartitionSlug} {activePartitionName} {onChange} {onReset} />
 			<SettingsSecurity />
 			<SettingsSync />
+			<div class="shortcuts-hint">
+				<div class="shortcuts-title">Keyboard shortcuts</div>
+				<ul class="shortcuts-list">
+					<li><kbd>Ctrl+Shift+H</kbd> Home page</li>
+					<li><kbd>Ctrl+Shift+L</kbd> Go back</li>
+					<li><kbd>Ctrl+Shift+N</kbd> Go forward</li>
+					<li><kbd>Ctrl+Shift+M</kbd> Markdown source</li>
+				</ul>
+			</div>
 		</div>
 
 		<div class="modal-footer">
@@ -156,6 +165,7 @@
 
 	.modal-body {
 		overflow-y: auto;
+		overflow-x: hidden;
 		padding: 1.25rem;
 		display: flex;
 		flex-direction: column;
@@ -199,6 +209,49 @@
 		color: var(--muted);
 		cursor: pointer;
 		font-family: inherit;
+	}
+
+	.shortcuts-hint {
+		margin: 0;
+		padding-top: 0.75rem;
+		border-top: 1px solid var(--border);
+	}
+
+	.shortcuts-title {
+		font-size: 0.7rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+		color: var(--muted);
+		margin-bottom: 0.5rem;
+	}
+
+	.shortcuts-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+	}
+
+	.shortcuts-list li {
+		font-size: 0.8rem;
+		color: var(--muted);
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.shortcuts-hint kbd {
+		font-size: 0.72rem;
+		padding: 0.1rem 0.35rem;
+		border: 1px solid var(--border);
+		border-radius: 4px;
+		background: var(--sidebar-bg);
+		font-family: inherit;
+		color: var(--text);
+		flex-shrink: 0;
 	}
 
 	.signout-btn:hover { border-color: #e57373; color: #e57373; }

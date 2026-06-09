@@ -77,9 +77,6 @@
 				onchange={onChange}
 			/>
 		</div>
-		<p class="section-desc">
-			Shortcuts: <kbd>Ctrl+Shift+L</kbd> back · <kbd>Ctrl+Shift+N</kbd> forward · <kbd>Ctrl+Shift+M</kbd> markdown source
-		</p>
 	</div>
 </section>
 
@@ -196,6 +193,7 @@
 		outline: none;
 		cursor: pointer;
 		transition: border-color 80ms;
+		max-width: 220px;
 	}
 
 	.select-input:focus { border-color: var(--accent); }
