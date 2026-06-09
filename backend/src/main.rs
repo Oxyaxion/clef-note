@@ -82,6 +82,10 @@ async fn setup_state() -> (AppState, u16) {
 
     let cfg = config::load(&default_partitions);
 
+    if parse_arg("storage").is_some() {
+        eprintln!("warning: --storage is no longer supported. Use --partitions instead (see release notes for v0.6.0).");
+    }
+
     // Priority: --partitions arg > partitions in toml > ../partitions
     let root_path = parse_arg("partitions")
         .map(std::path::PathBuf::from)
