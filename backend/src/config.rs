@@ -108,7 +108,7 @@ pub fn resolve_path(storage_path: &std::path::Path) -> std::path::PathBuf {
             return std::path::PathBuf::from(p);
         }
     }
-    if let Ok(p) = std::env::var("AURA_NOTES_CONFIG") && !p.is_empty() {
+    if let Ok(p) = std::env::var("CLEF_NOTE_CONFIG") && !p.is_empty() {
         return std::path::PathBuf::from(p);
     }
     storage_path.parent().unwrap_or(storage_path).join("clef-note.toml")

@@ -29,5 +29,5 @@ elif [ ! -f "$RESET_MARKER" ]; then
     touch "$RESET_MARKER"
 fi
 
-export AURA_NOTES_CONFIG="$CONFIG"
-exec /app/clef-note --storage /data --port "${PORT:-8080}"
+export CLEF_NOTE_CONFIG="$CONFIG"
+exec /app/clef-note --partitions /data --port "${PORT:-8080}"
