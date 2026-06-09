@@ -3,7 +3,6 @@ export interface AppSettings {
     fontSize: number;    // rem, e.g. 1.1
     lineHeight: number;  // e.g. 1.7
     customCss: string;
-    vaultName: string;
     homePage: string;
     dateFormat: string;
     mobileReadOnly: boolean;
@@ -28,7 +27,6 @@ export const DEFAULT: AppSettings = {
     fontSize: 1.1,
     lineHeight: 1.7,
     customCss: '',
-    vaultName: 'Notes',
     homePage: '',
     dateFormat: 'long-en',
     mobileReadOnly: false,

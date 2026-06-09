@@ -13,17 +13,6 @@
 	<h3 class="section-title">General</h3>
 	<div class="section-content">
 		<div class="setting-row">
-			<span class="setting-label">Vault name</span>
-			<input
-				class="text-input"
-				type="text"
-				bind:value={settings.vaultName}
-				oninput={onChange}
-				placeholder="Notes"
-				maxlength="32"
-			/>
-		</div>
-		<div class="setting-row">
 			<span class="setting-label">
 				Home page
 				<span class="setting-value">Ctrl+Shift+H</span>
