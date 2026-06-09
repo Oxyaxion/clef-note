@@ -60,6 +60,7 @@
 	let currentTheme = $state<ThemeId>('default');
 	let partitions = $state<PartitionInfo[]>([]);
 	const activePartitionSlug = $derived(partitions.find(p => p.active)?.slug ?? '');
+	const activePartitionName  = $derived(partitions.find(p => p.active)?.name ?? '');
 	let loggedIn = $state(session.exists());
 	let oidcError = $state<string | null>(null);
 	let settingsOpen = $state(false);
@@ -381,6 +382,7 @@
 	<Settings
 		{currentTheme}
 		{activePartitionSlug}
+		{activePartitionName}
 		initialSettings={currentSettings}
 		onClose={() => (settingsOpen = false)}
 		onSetTheme={(id) => { currentTheme = id; applyTheme(id); }}

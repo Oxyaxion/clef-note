@@ -4,10 +4,11 @@
 	interface Props {
 		settings: AppSettings;
 		activePartitionSlug?: string;
+		activePartitionName?: string;
 		onChange: () => void;
 	}
 
-	let { settings = $bindable(), activePartitionSlug = '', onChange }: Props = $props();
+	let { settings = $bindable(), activePartitionSlug = '', activePartitionName = '', onChange }: Props = $props();
 
 	function onHomeInput(e: Event) {
 		const val = (e.target as HTMLInputElement).value;
@@ -24,9 +25,14 @@
 	<h3 class="section-title">General</h3>
 	<div class="section-content">
 		<div class="setting-row">
-			<span class="setting-label">
-				Home page
-				<span class="setting-value">Ctrl+Shift+H</span>
+			<span class="setting-label home-label">
+				<span class="home-label-main">
+					Home page
+					<kbd class="shortcut-kbd">Ctrl+Shift+H</kbd>
+				</span>
+				{#if activePartitionName}
+					<span class="home-label-sub">per partition · {activePartitionName}</span>
+				{/if}
 			</span>
 			<input
 				class="text-input"
@@ -35,7 +41,6 @@
 				oninput={onHomeInput}
 				placeholder="note name"
 				autocomplete="off"
-				disabled={!activePartitionSlug}
 			/>
 		</div>
 		<div class="setting-row">
@@ -61,7 +66,7 @@
 			/>
 		</div>
 		<p class="section-desc">
-			Shortcuts: <kbd>Ctrl+Shift+H</kbd> home · <kbd>Ctrl+Shift+L</kbd> back · <kbd>Ctrl+Shift+N</kbd> forward · <kbd>Ctrl+Shift+M</kbd> markdown source
+			Shortcuts: <kbd>Ctrl+Shift+L</kbd> back · <kbd>Ctrl+Shift+N</kbd> forward · <kbd>Ctrl+Shift+M</kbd> markdown source
 		</p>
 	</div>
 </section>
@@ -124,9 +129,33 @@
 		min-width: 90px;
 	}
 
-	.setting-value {
-		font-size: 0.75rem;
+	.home-label {
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 0.2rem;
+	}
+
+	.home-label-main {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.shortcut-kbd {
+		font-size: 0.72rem;
+		padding: 0.1rem 0.35rem;
+		border: 1px solid var(--border);
+		border-radius: 4px;
+		background: var(--sidebar-bg);
+		font-family: inherit;
 		color: var(--muted);
+		font-weight: 400;
+	}
+
+	.home-label-sub {
+		font-size: 0.72rem;
+		color: var(--accent);
+		opacity: 0.8;
 	}
 
 	.text-input {
