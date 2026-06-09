@@ -108,6 +108,8 @@ All authenticated endpoints require either:
 - `Authorization: Bearer <api_key>` header, or
 - a valid session cookie (web UI login)
 
+> **Partition scope** — note, search, asset, and drawing endpoints all operate on the **active partition**. Switch the active partition first if you need to target a different one (see [Partitions](#partitions) below).
+
 ### Notes
 
 | Method | Path | Description |
@@ -254,12 +256,68 @@ curl -s "$CN_URL/api/shares" \
 
 ---
 
-### Git sync
+### Partitions
+
+All note operations are scoped to the **active partition**. Use these endpoints to list, create, switch, or delete partitions. See also the [README Partitions section](README.md#partitions) for how to configure git sync per partition.
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/sync/status` | Sync status |
-| `POST` | `/api/sync` | Trigger an immediate sync |
+| `GET` | `/api/vaults` | List all partitions |
+| `POST` | `/api/vaults` | Create a partition |
+| `POST` | `/api/vaults/active` | Switch active partition |
+| `DELETE` | `/api/vaults/{slug}` | Delete a partition (must not be active) |
+
+```bash
+# List partitions
+curl -s "$CN_URL/api/vaults" \
+  -H "Authorization: Bearer $CN_KEY" | jq '.'
+
+# Create a partition
+curl -s -X POST "$CN_URL/api/vaults" \
+  -H "Authorization: Bearer $CN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Work"}' | jq '.'
+
+# Switch active partition
+curl -s -X POST "$CN_URL/api/vaults/active" \
+  -H "Authorization: Bearer $CN_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"slug": "work"}'
+
+# Delete a partition (irreversible — deletes all notes inside)
+curl -s -X DELETE "$CN_URL/api/vaults/work" \
+  -H "Authorization: Bearer $CN_KEY"
+```
+
+**`GET /api/vaults` response:**
+
+```json
+[
+  { "slug": "notes", "name": "Notes", "active": true,  "has_sync": true  },
+  { "slug": "work",  "name": "Work",  "active": false, "has_sync": false }
+]
+```
+
+**`POST /api/vaults` body:** `{ "name": "Work" }` — the slug is derived automatically (`"My Notes"` → `"my-notes"`).
+
+**`DELETE /api/vaults/{slug}` status codes:**
+
+| Code | Meaning |
+|---|---|
+| `204` | Deleted |
+| `404` | Partition not found |
+| `409` | Cannot delete the active partition — switch first |
+
+---
+
+### Git sync
+
+Operates on the **active partition**. Configure git sync per partition via `partition.toml` and `[vault_tokens]` in `clef-note.toml` — see [README → Partitions → Configuring git sync per partition](README.md#configuring-git-sync-per-partition).
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/sync/status` | Sync status for the active partition |
+| `POST` | `/api/sync` | Trigger an immediate sync on the active partition |
 
 ```bash
 curl -s "$CN_URL/api/sync/status" \
