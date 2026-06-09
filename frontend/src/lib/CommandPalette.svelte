@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { searchContent, queryNotes, listTags, uploadAsset, type NoteMeta, type SearchResult, type NoteQueryResult, type TagCount } from './api';
+	import { searchContent, queryNotes, listTags, uploadAsset, switchVault, type NoteMeta, type SearchResult, type NoteQueryResult, type TagCount, type VaultInfo } from './api';
 	import { THEMES, type ThemeId } from './theme';
 	import { escapeHtml, isAbortError } from './utils';
 	import { emit } from './events';
@@ -24,6 +24,7 @@
 		noteMarkdown?: string;
 		rawView?: boolean;
 		currentTheme?: ThemeId;
+		vaults?: VaultInfo[];
 		onSelect: (name: string) => void;
 		onClose: () => void;
 		onNewNote: () => void;
@@ -34,9 +35,10 @@
 		onSettings: () => void;
 		onMediaLibrary: () => void;
 		onShare?: () => void;
+		onVaultSwitch?: (slug: string) => void;
 	}
 
-	let { notes, selected, noteMarkdown = '', rawView = false, currentTheme = 'default', onSelect, onClose, onNewNote, onRename, onDelete, onToggleRaw, onSetTheme, onSettings, onMediaLibrary, onShare }: Props = $props();
+	let { notes, selected, noteMarkdown = '', rawView = false, currentTheme = 'default', vaults = [], onSelect, onClose, onNewNote, onRename, onDelete, onToggleRaw, onSetTheme, onSettings, onMediaLibrary, onShare, onVaultSwitch }: Props = $props();
 
 	let query = $state('');
 	let selectedIndex = $state(0);
@@ -55,6 +57,17 @@
 
 	// Stable commands — rebuilt only when themes or core actions change (not on note switch)
 	const baseCommands = $derived<Command[]>([
+		// Vault switching (shown only when multiple vaults exist)
+		...vaults.filter(v => !v.active).map(v => ({
+			id: `vault-${v.slug}`,
+			label: `Switch to: ${v.name}`,
+			icon: '⊞',
+			action: async () => {
+				await switchVault(v.slug);
+				onClose();
+				onVaultSwitch?.(v.slug);
+			},
+		})),
 		{
 			id: 'settings',
 			label: 'Settings',

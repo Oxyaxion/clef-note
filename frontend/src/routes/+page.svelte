@@ -15,12 +15,14 @@
 		saveNote,
 		deleteNote,
 		getSettings,
+		listVaults,
 		serializeFrontmatter,
 		session,
 		logout,
 		exchangeOidcCode,
 		type NoteMeta,
 		type Frontmatter,
+		type VaultInfo,
 	} from '$lib/api';
 	import { loadTheme, applyTheme, type ThemeId } from '$lib/theme';
 	import { applySettings, DEFAULT, type AppSettings } from '$lib/settings';
@@ -56,7 +58,7 @@
 	let isMobile = $state(false);
 	let creatingFromPalette = $state(false);
 	let currentTheme = $state<ThemeId>('default');
-	let vaultName = $state('Notes');
+	let vaults = $state<VaultInfo[]>([]);
 	let loggedIn = $state(session.exists());
 	let oidcError = $state<string | null>(null);
 	let settingsOpen = $state(false);
@@ -137,16 +139,16 @@
 		applyTheme(theme);
 	});
 
-	// Re-run when loggedIn changes: fetch initial notes + settings, then open home page.
+	// Re-run when loggedIn changes: fetch initial notes + settings + vaults.
 	$effect(() => {
 		if (!loggedIn) return;
-		Promise.all([listNotes(), getSettings()]).then(([n, raw]) => {
+		Promise.all([listNotes(), getSettings(), listVaults()]).then(([n, raw, v]) => {
 			notes = n;
+			vaults = v;
 			const s: AppSettings = { ...DEFAULT, ...(raw as Partial<AppSettings>) };
 			currentSettings = s;
 			applySettings(s);
 			setDateFormat(s.dateFormat ?? 'long-en');
-			vaultName = s.vaultName ?? 'Notes';
 			const home = s.homePage?.trim();
 			if (home) selectNote(home).catch(() => {});
 		});
@@ -307,9 +309,33 @@
 	}
 
 	function onSettingsChange(s: AppSettings) {
-		vaultName = s.vaultName ?? 'Notes';
 		currentSettings = s;
 		setDateFormat(s.dateFormat ?? 'long-en');
+	}
+
+	async function handleVaultSwitch(slug: string) {
+		// The backend has already switched the active vault; reload notes.
+		autoSave.flush();
+		selected = null;
+		noteContent = '';
+		noteFrontmatter = {};
+		try {
+			const [n, v] = await Promise.all([listNotes(), listVaults()]);
+			notes = n;
+			vaults = v;
+			const home = currentSettings.homePage?.trim();
+			if (home) selectNote(home).catch(() => {});
+		} catch {
+			// ignore — user can retry
+		}
+	}
+
+	function handleVaultCreated(vault: VaultInfo) {
+		vaults = [...vaults, vault];
+	}
+
+	function handleVaultDeleted(slug: string) {
+		vaults = vaults.filter(v => v.slug !== slug);
 	}
 
 	function onGlobalKeydown(e: KeyboardEvent) {
@@ -368,6 +394,7 @@
 		{noteMarkdown}
 		{rawView}
 		{currentTheme}
+		{vaults}
 		onSelect={selectNote}
 		onClose={() => (paletteOpen = false)}
 		onNewNote={() => {
@@ -381,6 +408,7 @@
 		onSettings={() => (settingsOpen = true)}
 		onMediaLibrary={() => (metaPageOpen = true)}
 		onShare={selected ? () => (shareModalOpen = true) : undefined}
+		onVaultSwitch={handleVaultSwitch}
 	/>
 {/if}
 
@@ -399,7 +427,7 @@
 	<Sidebar
 		{notes}
 		{selected}
-		{vaultName}
+		{vaults}
 		mobileOpen={sidebarOpen}
 		startCreating={creatingFromPalette}
 		hidden={focusMode && !isMobile}
@@ -408,6 +436,9 @@
 		onMobileClose={() => (sidebarOpen = false)}
 		onCreateStarted={() => (creatingFromPalette = false)}
 		onSettings={() => { sidebarOpen = false; settingsOpen = true; }}
+		onVaultSwitch={handleVaultSwitch}
+		onVaultCreated={handleVaultCreated}
+		onVaultDeleted={handleVaultDeleted}
 	/>
 
 	<main class="main">

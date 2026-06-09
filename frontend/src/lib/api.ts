@@ -347,6 +347,50 @@ export async function putSettings(s: AppSettings): Promise<void> {
     });
 }
 
+// ── Vaults (partitions) ───────────────────────────────────────────────────────
+
+export interface VaultInfo {
+    slug: string;
+    name: string;
+    active: boolean;
+    has_sync: boolean;
+}
+
+export async function listVaults(): Promise<VaultInfo[]> {
+    const res = await apiFetch(`${BASE}/api/vaults`, { headers: authHeaders() });
+    if (!res.ok) throw new Error('Failed to list vaults');
+    return res.json();
+}
+
+export async function switchVault(slug: string): Promise<void> {
+    const res = await apiFetch(`${BASE}/api/vaults/active`, {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ slug }),
+    });
+    if (!res.ok) throw new Error('Failed to switch vault');
+}
+
+export async function createVault(name: string): Promise<VaultInfo> {
+    const res = await apiFetch(`${BASE}/api/vaults`, {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ name }),
+    });
+    if (res.status === 409) throw new Error('A partition with that name already exists');
+    if (!res.ok) throw new Error('Failed to create vault');
+    return res.json();
+}
+
+export async function deleteVault(slug: string): Promise<void> {
+    const res = await apiFetch(`${BASE}/api/vaults/${encodeURIComponent(slug)}`, {
+        method: 'DELETE',
+        headers: authHeaders(),
+    });
+    if (res.status === 409) throw new Error('Cannot delete the active partition');
+    if (!res.ok) throw new Error('Failed to delete vault');
+}
+
 // ── Git sync ──────────────────────────────────────────────────────────────────
 
 export interface SyncStatus {

@@ -1,14 +1,15 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import type { NoteMeta } from './api';
+	import type { NoteMeta, VaultInfo } from './api';
 	import { buildTree, flatten, type DisplayItem } from './sidebarTree';
 	import { storage } from './storage';
 	import { escapeHtml } from './utils';
+	import VaultSwitcher from './VaultSwitcher.svelte';
 
 	interface Props {
 		notes: NoteMeta[];
 		selected: string | null;
-		vaultName?: string;
+		vaults?: VaultInfo[];
 		mobileOpen?: boolean;
 		startCreating?: boolean;
 		hidden?: boolean;
@@ -17,9 +18,12 @@
 		onMobileClose?: () => void;
 		onCreateStarted?: () => void;
 		onSettings?: () => void;
+		onVaultSwitch?: (slug: string) => void;
+		onVaultCreated?: (vault: VaultInfo) => void;
+		onVaultDeleted?: (slug: string) => void;
 	}
 
-	let { notes, selected, vaultName = 'Notes', mobileOpen = false, startCreating = false, hidden = false, onSelect, onNew, onMobileClose, onCreateStarted, onSettings }: Props = $props();
+	let { notes, selected, vaults = [], mobileOpen = false, startCreating = false, hidden = false, onSelect, onNew, onMobileClose, onCreateStarted, onSettings, onVaultSwitch, onVaultCreated, onVaultDeleted }: Props = $props();
 
 	$effect(() => {
 		if (startCreating) {
@@ -133,7 +137,16 @@
 >
 	<div class="sidebar-head">
 		{#if !collapsed}
-			<span class="vault-name">{vaultName}</span>
+			{#if vaults.length > 0 && (onVaultSwitch || onVaultCreated || onVaultDeleted)}
+				<VaultSwitcher
+					{vaults}
+					onSwitch={(slug) => onVaultSwitch?.(slug)}
+					onCreated={(vault) => onVaultCreated?.(vault)}
+					onDeleted={(slug) => onVaultDeleted?.(slug)}
+				/>
+			{:else}
+				<span class="vault-name">{vaults.find(v => v.active)?.name ?? 'Notes'}</span>
+			{/if}
 			<div class="head-actions">
 				<button
 					onclick={() => (creating = !creating)}
