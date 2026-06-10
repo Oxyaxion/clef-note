@@ -2,16 +2,25 @@
 
 Partitions are independent note workspaces. Each partition lives in its own sub-directory under the `--partitions` root and can optionally be synced to a **different** git repository.
 
-## Creating a partition
-
-Open the sidebar, click the partition name in the top-left, then **New partition**. The server creates the sub-directory and `partition.toml` automatically. No restart required.
-
-You can also create a partition manually by adding a `partition.toml` to any sub-directory and restarting the server:
+Which sub-directories are partitions is declared in a single **`partition.toml`** at the root of the partitions directory. A sub-directory is only treated as a partition if its slug appears there — directories not listed are ignored.
 
 ```toml
-# notes/partition.toml
+# <partitions root>/partition.toml
+
+[notes]
 name = "Notes"
+
+[work]
+name = "Work"
 ```
+
+The slug (the `[…]` key) is the sub-directory name; `name` is the display label and defaults to the slug if omitted.
+
+## Creating a partition
+
+Open the sidebar, click the partition name in the top-left, then **New partition**. The server creates the sub-directory and adds an entry to the root `partition.toml` automatically. No restart required.
+
+You can also create one manually by adding a section to the root `partition.toml` and restarting the server. The sub-directory is created on startup if it does not exist yet.
 
 ## Switching partitions
 
@@ -22,13 +31,15 @@ name = "Notes"
 
 Each partition can be synced to a separate remote. The git token is kept in `clef-note.toml` (outside all partition directories) so it is never committed to any repository.
 
-**Step 1 — add the sync block to `partition.toml`** (inside the partition folder, safe to commit):
+**Step 1 — add a `[<slug>.sync]` block to the root `partition.toml`:**
 
 ```toml
-# /home/user/clef-notes/work/partition.toml
+# <partitions root>/partition.toml
+
+[work]
 name = "Work"
 
-[sync]
+[work.sync]
 remote           = "https://github.com/you/work-notes.git"
 branch           = "main"
 interval_minutes = 30
@@ -43,7 +54,7 @@ author_email     = "sync@local"
 password = "$argon2id$..."
 
 [partition_git_tokens]
-notes = "ghp_personal_token_xxxx"   # key = partition folder name
+notes = "ghp_personal_token_xxxx"   # key = partition slug
 work  = "ghp_work_token_yyyy"
 ```
 
@@ -56,12 +67,11 @@ work  = "ghp_work_token_yyyy"
   clef-note.toml               ← password + tokens (chmod 600)
 
 /home/user/clef-notes/              ← --partitions root
+  partition.toml             ← declares the "notes" and "work" partitions
   notes/
-    partition.toml             ← name="Notes", sync→github.com/you/personal-notes
     Journal.md
     .assets/
   work/
-    partition.toml             ← name="Work",  sync→github.com/you/work-notes
     Projects/
       Alpha.md
     .assets/
@@ -77,20 +87,20 @@ work  = "ghp_work_yyyy"
 ```
 
 ```toml
-# notes/partition.toml
+# /home/user/clef-notes/partition.toml
+
+[notes]
 name = "Notes"
 
-[sync]
+[notes.sync]
 remote           = "https://github.com/you/personal-notes.git"
 branch           = "main"
 interval_minutes = 60
-```
 
-```toml
-# work/partition.toml
+[work]
 name = "Work"
 
-[sync]
+[work.sync]
 remote           = "https://github.com/you/work-notes.git"
 branch           = "main"
 interval_minutes = 15

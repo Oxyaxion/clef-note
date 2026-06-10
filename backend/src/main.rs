@@ -110,8 +110,8 @@ async fn setup_state() -> (AppState, u16) {
             root_path.join("notes"),
             None,
         ).await;
-        let toml = "name = \"Notes\"\n";
-        tokio::fs::write(root_path.join("notes").join("partition.toml"), toml).await.ok();
+        let manifest = "[notes]\nname = \"Notes\"\n";
+        tokio::fs::write(partition::manifest_path(&root_path), manifest).await.ok();
         let mut map: HashMap<String, Arc<partitions::PartitionState>> = HashMap::new();
         map.insert("notes".to_string(), Arc::new(partition));
         let active = "notes".to_string();

@@ -312,7 +312,7 @@ curl -s -X DELETE "$CN_URL/api/partitions/work" \
 
 ### Git sync
 
-Operates on the **active partition**. Configure git sync per partition via `partition.toml` and `[vault_tokens]` in `clef-note.toml` — see [README → Partitions → Configuring git sync per partition](README.md#configuring-git-sync-per-partition).
+Operates on the **active partition**. Configure git sync per partition via the root `partition.toml` and `[partition_git_tokens]` in `clef-note.toml` — see [PARTITIONS.md → Configuring git sync per partition](PARTITIONS.md#configuring-git-sync-per-partition).
 
 | Method | Path | Description |
 |---|---|---|

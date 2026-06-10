@@ -44,37 +44,28 @@ pub struct RenameRequest {
 
 // ── Discovery ─────────────────────────────────────────────────────────────────
 
-/// Scan `root` for subdirectories containing a `partition.toml`.
-/// Returns an ordered list (alphabetical by slug). Unknown dirs are silently skipped.
+/// Read the root `partition.toml` manifest and build one `PartitionState` per
+/// declared partition (slug = sub-directory name). Sub-directories not listed
+/// in the manifest are ignored. Returns an ordered list (alphabetical by slug).
 pub async fn discover(
     root: &std::path::Path,
     partition_tokens: &HashMap<String, String>,
 ) -> Vec<Arc<PartitionState>> {
-    let mut entries: Vec<(String, PathBuf)> = Vec::new();
+    crate::partition::migrate_legacy(root);
 
-    if let Ok(mut rd) = tokio::fs::read_dir(root).await {
-        while let Ok(Some(entry)) = rd.next_entry().await {
-            let path = entry.path();
-            if !path.is_dir() {
-                continue;
-            }
-            let slug = match path.file_name().and_then(|n| n.to_str()) {
-                Some(s) if !s.starts_with('.') => s.to_string(),
-                _ => continue,
-            };
-            if path.join("partition.toml").exists() {
-                entries.push((slug, path));
-            }
-        }
-    }
+    let mut entries: Vec<(String, crate::partition::PartitionConfig)> =
+        crate::partition::load_manifest(root)
+            .into_iter()
+            .filter(|(slug, _)| !slug.is_empty() && !slug.starts_with('.'))
+            .collect();
 
     entries.sort_by(|a, b| a.0.cmp(&b.0));
 
     let mut partitions = Vec::new();
-    for (slug, path) in entries {
-        let partition_cfg = crate::partition::load(&path);
-        let name = partition_cfg.name.unwrap_or_else(|| slug.clone());
-        let mut sync_cfg = partition_cfg.sync;
+    for (slug, cfg) in entries {
+        let path = root.join(&slug);
+        let name = cfg.name.unwrap_or_else(|| slug.clone());
+        let mut sync_cfg = cfg.sync;
         if let Some(ref mut sync) = sync_cfg {
             if let Some(token) = partition_tokens.get(&slug) {
                 sync.token = Some(token.clone());
@@ -201,8 +192,11 @@ pub async fn create_partition(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let toml = format!("name = \"{}\"\n", name.replace('"', "\\\""));
-    tokio::fs::write(partition_dir.join("partition.toml"), toml)
+    // Register the partition in the root manifest.
+    let manifest_path = crate::partition::manifest_path(&state.root_path);
+    let current = tokio::fs::read_to_string(&manifest_path).await.unwrap_or_default();
+    let updated = crate::partition::set_name(&current, &slug, &name);
+    tokio::fs::write(&manifest_path, updated)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
@@ -231,33 +225,12 @@ pub async fn rename_partition(
         }
     };
 
-    // Update partition.toml, preserving any [sync] section below the name line.
-    let toml_path = partition.storage_path.join("partition.toml");
-    let current = tokio::fs::read_to_string(&toml_path).await.unwrap_or_default();
-    let new_name_line = format!("name = \"{}\"", name.replace('"', "\\\""));
-    let mut replaced = false;
-    let mut lines: Vec<String> = current
-        .lines()
-        .map(|l| {
-            if !replaced {
-                let t = l.trim_start();
-                if t.starts_with("name") && t["name".len()..].trim_start().starts_with('=') {
-                    replaced = true;
-                    return new_name_line.clone();
-                }
-            }
-            l.to_string()
-        })
-        .collect();
-    if !replaced {
-        lines.insert(0, new_name_line);
-    }
-    let mut updated = lines.join("\n");
-    if current.ends_with('\n') {
-        updated.push('\n');
-    }
-
-    if tokio::fs::write(&toml_path, updated).await.is_err() {
+    // Update the partition's name in the root manifest, preserving its
+    // [slug.sync] section and any surrounding comments.
+    let manifest_path = crate::partition::manifest_path(&state.root_path);
+    let current = tokio::fs::read_to_string(&manifest_path).await.unwrap_or_default();
+    let updated = crate::partition::set_name(&current, &slug, &name);
+    if tokio::fs::write(&manifest_path, updated).await.is_err() {
         return StatusCode::INTERNAL_SERVER_ERROR;
     }
 
@@ -283,6 +256,14 @@ pub async fn delete_partition(
     };
 
     state.partitions.write().await.remove(&slug);
+
+    // Drop the partition from the root manifest so it is not rediscovered.
+    let manifest_path = crate::partition::manifest_path(&state.root_path);
+    if let Ok(current) = tokio::fs::read_to_string(&manifest_path).await {
+        let updated = crate::partition::remove(&current, &slug);
+        tokio::fs::write(&manifest_path, updated).await.ok();
+    }
+
     tokio::fs::remove_dir_all(&partition_dir).await.ok();
 
     StatusCode::NO_CONTENT

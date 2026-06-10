@@ -206,16 +206,15 @@ Notes live inside named partition sub-directories. A default `notes` partition i
   clef-note.toml            ← global config (password, tokens) — never git-tracked
 
 /home/user/clef-notes/      ← --partitions root
+  partition.toml            ← declares which sub-dirs are partitions (+ git sync)
   settings.json             ← global UI settings (theme, font, …)
   notes/                    ← partition "Notes" (created on first run)
-    partition.toml
     Meeting.md
     Work/
       Project.md
     .assets/
     .drawings/
   work/                     ← partition "Work" (created from the UI)
-    partition.toml
     .assets/
     .drawings/
 ```
