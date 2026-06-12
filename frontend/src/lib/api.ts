@@ -32,6 +32,7 @@ export interface NoteMeta {
     is_template?: boolean;
     is_index?: boolean;
     has_frontmatter?: boolean;
+    modified_at?: number;
 }
 
 export interface Frontmatter {

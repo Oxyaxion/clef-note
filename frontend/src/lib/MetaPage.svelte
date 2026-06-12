@@ -11,6 +11,7 @@
 	import MediaDrawings from './MediaDrawings.svelte';
 	import MediaShares from './MediaShares.svelte';
 	import MediaStubs from './MediaStubs.svelte';
+	import MediaNoFrontmatter from './MediaNoFrontmatter.svelte';
 	import type { NoteMeta } from './api';
 
 	const BASE = import.meta.env.VITE_API_BASE ?? '';
@@ -197,19 +198,10 @@
 				onDeleted={(name) => { stubs = stubs.filter(s => s.name !== name); onNoteDeleted?.(name); }}
 			/>
 		{:else if activeTab === 'no-frontmatter'}
-			{#if noFrontmatterNotes.length === 0}
-				<div class="empty-state">All notes have frontmatter 🎉</div>
-			{:else}
-				<ul class="nofm-list">
-					{#each noFrontmatterNotes as note (note.name)}
-						<li class="nofm-item">
-							<button class="nofm-btn" onclick={() => { onClose(); onNavigate(note.name); }}>
-								<span class="nofm-name">{note.name}</span>
-							</button>
-						</li>
-					{/each}
-				</ul>
-			{/if}
+			<MediaNoFrontmatter
+				notes={noFrontmatterNotes}
+				onNavigate={(name) => { onClose(); onNavigate(name); }}
+			/>
 		{/if}
 	</div>
 </div>
@@ -368,39 +360,6 @@
 		color: var(--muted);
 		font-size: 0.9rem;
 		font-style: italic;
-	}
-
-	/* ── No-frontmatter list ──────────────────────────────────── */
-	.nofm-list {
-		list-style: none;
-		margin: 0;
-		padding: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 2px;
-	}
-
-	.nofm-item {
-		display: flex;
-	}
-
-	.nofm-btn {
-		display: flex;
-		align-items: center;
-		width: 100%;
-		background: none;
-		border: none;
-		border-radius: 6px;
-		cursor: pointer;
-		padding: 0.35rem 0.6rem;
-		text-align: left;
-		transition: background 80ms;
-	}
-	.nofm-btn:hover { background: var(--border); }
-
-	.nofm-name {
-		font-size: 0.88rem;
-		color: var(--text);
 	}
 
 	/* ── Lightbox ─────────────────────────────────────────────── */

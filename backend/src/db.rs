@@ -14,6 +14,7 @@ pub struct NoteMeta {
     pub is_template: bool,
     pub is_index: bool,
     pub has_frontmatter: bool,
+    pub modified_at: i64,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -183,6 +184,7 @@ impl Db {
                 is_template,
                 is_index,
                 has_frontmatter: n.has_frontmatter,
+                modified_at: n.row.modified_at,
             }
         }).collect()
     }
