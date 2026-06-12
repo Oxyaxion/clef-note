@@ -11,15 +11,17 @@
 	import MediaDrawings from './MediaDrawings.svelte';
 	import MediaShares from './MediaShares.svelte';
 	import MediaStubs from './MediaStubs.svelte';
+	import type { NoteMeta } from './api';
 
 	const BASE = import.meta.env.VITE_API_BASE ?? '';
 
 	interface Props {
+		notes: NoteMeta[];
 		onClose: () => void;
 		onNavigate: (name: string) => void;
 		onNoteDeleted?: (name: string) => void;
 	}
-	let { onClose, onNavigate, onNoteDeleted }: Props = $props();
+	let { notes, onClose, onNavigate, onNoteDeleted }: Props = $props();
 
 	type Preview =
 		| { kind: 'image'; asset: AssetMeta }
@@ -29,7 +31,7 @@
 	let drawings = $state<string[]>([]);
 	let drawingPreviews = $state<Record<string, string>>({});
 	let loading = $state(true);
-	let activeTab = $state<'images' | 'drawings' | 'shares' | 'stubs'>('images');
+	let activeTab = $state<'images' | 'drawings' | 'shares' | 'stubs' | 'no-frontmatter'>('images');
 	let preview = $state<Preview | null>(null);
 	let usedAssets = $state<Set<string> | null>(null);
 	let usedDrawings = $state<Set<string> | null>(null);
@@ -37,6 +39,10 @@
 	let shares = $state<ShareMeta[]>([]);
 	let stubs = $state<NoteStub[]>([]);
 	let stubsMaxBytes = $state(500);
+
+	const noFrontmatterNotes = $derived(
+		notes.filter(n => !n.has_frontmatter).sort((a, b) => a.name.localeCompare(b.name))
+	);
 
 	onMount(async () => {
 		await reload();
@@ -127,7 +133,7 @@
 				<path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
 			</svg>
 		</button>
-		<span class="meta-title">Media library</span>
+		<span class="meta-title">MetaPage</span>
 		<div class="header-right">
 			<div class="tabs">
 				<button class="tab" class:active={activeTab === 'images'} onclick={() => (activeTab = 'images')}>
@@ -142,8 +148,11 @@
 				<button class="tab" class:active={activeTab === 'stubs'} onclick={() => (activeTab = 'stubs')}>
 					Stubs <span class="count">{stubs.length}</span>
 				</button>
+				<button class="tab" class:active={activeTab === 'no-frontmatter'} onclick={() => (activeTab = 'no-frontmatter')}>
+					No frontmatter <span class="count">{noFrontmatterNotes.length}</span>
+				</button>
 			</div>
-			{#if usedAssets !== null && activeTab !== 'shares' && activeTab !== 'stubs'}
+			{#if usedAssets !== null && activeTab !== 'shares' && activeTab !== 'stubs' && activeTab !== 'no-frontmatter'}
 				<div class="filter-pills">
 					<button class="pill" class:active={filter === 'all'} onclick={() => (filter = 'all')}>All</button>
 					<button class="pill" class:active={filter === 'used'} onclick={() => (filter = 'used')}>Used</button>
@@ -187,6 +196,20 @@
 				onNavigate={(name) => { onClose(); onNavigate(name); }}
 				onDeleted={(name) => { stubs = stubs.filter(s => s.name !== name); onNoteDeleted?.(name); }}
 			/>
+		{:else if activeTab === 'no-frontmatter'}
+			{#if noFrontmatterNotes.length === 0}
+				<div class="empty-state">All notes have frontmatter 🎉</div>
+			{:else}
+				<ul class="nofm-list">
+					{#each noFrontmatterNotes as note (note.name)}
+						<li class="nofm-item">
+							<button class="nofm-btn" onclick={() => { onClose(); onNavigate(note.name); }}>
+								<span class="nofm-name">{note.name}</span>
+							</button>
+						</li>
+					{/each}
+				</ul>
+			{/if}
 		{/if}
 	</div>
 </div>
@@ -345,6 +368,39 @@
 		color: var(--muted);
 		font-size: 0.9rem;
 		font-style: italic;
+	}
+
+	/* ── No-frontmatter list ──────────────────────────────────── */
+	.nofm-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+
+	.nofm-item {
+		display: flex;
+	}
+
+	.nofm-btn {
+		display: flex;
+		align-items: center;
+		width: 100%;
+		background: none;
+		border: none;
+		border-radius: 6px;
+		cursor: pointer;
+		padding: 0.35rem 0.6rem;
+		text-align: left;
+		transition: background 80ms;
+	}
+	.nofm-btn:hover { background: var(--border); }
+
+	.nofm-name {
+		font-size: 0.88rem;
+		color: var(--text);
 	}
 
 	/* ── Lightbox ─────────────────────────────────────────────── */

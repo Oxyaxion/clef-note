@@ -13,6 +13,7 @@ pub struct NoteMeta {
     pub pinned: bool,
     pub is_template: bool,
     pub is_index: bool,
+    pub has_frontmatter: bool,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -62,6 +63,7 @@ pub struct NoteStub {
 struct StoredNote {
     row: NoteRow,
     body: String,
+    has_frontmatter: bool,
 }
 
 // ── Note index ────────────────────────────────────────────────────────────────
@@ -94,9 +96,13 @@ impl Db {
             project: parsed.project.clone(),
             last_modified: parsed.last_modified.clone(),
         };
+        let has_frontmatter = parsed.frontmatter
+            .as_object()
+            .map(|m| !m.is_empty())
+            .unwrap_or(false);
         self.0.write().unwrap().insert(
             name.to_string(),
-            StoredNote { row, body: parsed.body.clone() },
+            StoredNote { row, body: parsed.body.clone(), has_frontmatter },
         );
     }
 
@@ -175,7 +181,13 @@ impl Db {
         index.values().map(|n| {
             let is_template = n.row.note_type.as_deref() == Some("template");
             let is_index    = n.row.note_type.as_deref() == Some("index");
-            NoteMeta { name: n.row.name.clone(), pinned: n.row.pinned, is_template, is_index }
+            NoteMeta {
+                name: n.row.name.clone(),
+                pinned: n.row.pinned,
+                is_template,
+                is_index,
+                has_frontmatter: n.has_frontmatter,
+            }
         }).collect()
     }
 

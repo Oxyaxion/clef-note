@@ -31,6 +31,7 @@ export interface NoteMeta {
     pinned?: boolean;
     is_template?: boolean;
     is_index?: boolean;
+    has_frontmatter?: boolean;
 }
 
 export interface Frontmatter {
