@@ -14,6 +14,7 @@
 - Keyboard-first: `/` for blocks, `Ctrl+K` for commands.
 - Write live query blocks directly in your notes: `{area:pro status:active order by priority}`, `{path:Work/ depth:2 order by name and not project print name}` — results update in real time.
 - All the modern features: export notes / copy-paste images / Excalidraw drawings.
+- **MetaPage** — vault overview accessible via `Ctrl+K`: images, drawings, shared links, stub notes, and notes without frontmatter.
 - Responsive for smartphone.
 - Read-only mode.
 - API to query from the CLI (`scripts/cn`). See [API.md](API.md) for the full reference.
