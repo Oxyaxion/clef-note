@@ -25,12 +25,19 @@
     let menuEl     = $state<HTMLDivElement | null>(null);
     let addBtnEl   = $state<HTMLButtonElement | null>(null);
     let textareaEl = $state<HTMLTextAreaElement | null>(null);
+    // Plain (non-reactive) sentinel: canonical YAML of the last value we sent via onChange.
+    // Lets the effect tell apart "frontmatter prop echoed our own save" (no-op)
+    // from "external change — note switch, H1 auto-sync, …" (must reset rawYaml).
+    let _lastSaved = toYaml(frontmatter);
 
-    // Sync external frontmatter changes into the YAML editor (when not focused)
+    // Sync external frontmatter changes (note switch, …) into the YAML editor.
+    // When the change came from our own onBlur → onChange, yaml === _lastSaved → no-op.
     $effect(() => {
         const yaml = toYaml(frontmatter);
-        if (!isFocused && !parseError) {
+        if (!isFocused && yaml !== _lastSaved) {
+            parseError = '';
             rawYaml = yaml;
+            _lastSaved = yaml;
         }
     });
 
@@ -190,6 +197,9 @@
         const parsed = fromYaml(rawYaml);
         if (parsed === null) { parseError = 'Invalid YAML'; return; }
         parseError = '';
+        const normalized = toYaml(parsed);
+        rawYaml = normalized;
+        _lastSaved = normalized;
         onChange(parsed);
     }
 
@@ -211,7 +221,7 @@
     {#if !expanded}
         <button
             class="fm-pill-btn"
-            onclick={() => { rawYaml = toYaml(frontmatter); expanded = true; }}
+            onclick={() => { expanded = true; }}
         >
             <span class="fm-brace">{'{}'}</span>
             {#if hasContent}
