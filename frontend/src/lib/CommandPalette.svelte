@@ -75,8 +75,8 @@
 			action: () => { onClose(); onSettings(); },
 		},
 		{
-			id: 'media-library',
-			label: 'Media library',
+			id: 'meta-page',
+			label: 'MetaPage',
 			icon: '⊟',
 			action: () => { onClose(); onMediaLibrary(); },
 		},
