@@ -28,7 +28,7 @@
     // Plain (non-reactive) sentinel: canonical YAML of the last value we sent via onChange.
     // Lets the effect tell apart "frontmatter prop echoed our own save" (no-op)
     // from "external change — note switch, H1 auto-sync, …" (must reset rawYaml).
-    let _lastSaved = toYaml(frontmatter);
+    let _lastSaved = untrack(() => toYaml(frontmatter));
 
     // Sync external frontmatter changes (note switch, …) into the YAML editor.
     // When the change came from our own onBlur → onChange, yaml === _lastSaved → no-op.
@@ -111,6 +111,9 @@
 
     // ── YAML parser (our subset: scalars + string arrays) ────────────────────
 
+    // Fields that are always arrays — a bare scalar value "a, b" is auto-split.
+    const ARRAY_FIELDS = new Set(['tags', 'aliases']);
+
     function parseScalar(v: string): unknown {
         if (v === 'true')  return true;
         if (v === 'false') return false;
@@ -142,15 +145,24 @@
                 if (blockKey) {
                     const key = blockKey[1]; i++;
                     const items: unknown[] = [];
-                    while (i < lines.length && /^\s+-\s/.test(lines[i]))
-                        items.push(parseScalar(lines[i++].replace(/^\s+-\s*/, '').trim()));
+                    // Accept any indentation and optional space after dash (auto-corrected on blur)
+                    while (i < lines.length && /^\s*-/.test(lines[i])) {
+                        const v = parseScalar(lines[i++].replace(/^\s*-\s*/, '').trim());
+                        if (v !== undefined && v !== '') items.push(v);
+                    }
                     if (items.length) result[key] = items;
                     continue;
                 }
                 const kv = line.match(/^([a-zA-Z_][\w-]*):\s*(.*)/);
                 if (kv) {
-                    const val = parseScalar(kv[2].trim());
-                    if (val !== undefined && val !== null && val !== '') result[kv[1]] = val;
+                    const key = kv[1];
+                    let val: unknown = parseScalar(kv[2].trim());
+                    // "tags: rust, svelte" → auto-split into array
+                    if (ARRAY_FIELDS.has(key) && typeof val === 'string' && val.includes(',')) {
+                        const parts = val.split(',').map(s => parseScalar(s.trim())).filter(v => v !== undefined && v !== '');
+                        if (parts.length > 0) val = parts;
+                    }
+                    if (val !== undefined && val !== null && val !== '') result[key] = val;
                     i++; continue;
                 }
                 i++;
