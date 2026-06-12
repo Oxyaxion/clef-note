@@ -352,9 +352,23 @@ fn sync_blocking(cfg: &SyncConfig, storage: &Path) -> Result<(), String> {
             if repo.index().map_err(e)?.has_conflicts() {
                 resolve_conflicts(&repo, cfg, storage, remote_oid).map_err(e)?;
             } else {
-                // Clean merge — just commit.
-                commit_if_changed(&repo, cfg, &format!("sync: merge remote/{}", cfg.branch))
-                    .map_err(e)?;
+                // Clean merge — create a proper two-parent merge commit so the push
+                // is fast-forwardable from the remote's perspective.
+                let sig = sig(cfg).map_err(e)?;
+                let head_commit = repo.head().map_err(e)?.peel_to_commit().map_err(e)?;
+                let remote_commit = repo.find_commit(remote_oid).map_err(e)?;
+                let mut index = repo.index().map_err(e)?;
+                let tree_oid = index.write_tree().map_err(e)?;
+                let tree = repo.find_tree(tree_oid).map_err(e)?;
+                repo.commit(
+                    Some("HEAD"),
+                    &sig,
+                    &sig,
+                    &format!("sync: merge remote/{}", cfg.branch),
+                    &tree,
+                    &[&head_commit, &remote_commit],
+                )
+                .map_err(e)?;
                 repo.cleanup_state().map_err(e)?;
                 info!("sync: clean merge");
             }
