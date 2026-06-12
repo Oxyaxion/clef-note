@@ -3,12 +3,13 @@
 		drawings: string[];
 		drawingPreviews: Record<string, string>;
 		usedDrawings: Set<string> | null;
-		filter: 'all' | 'used' | 'orphaned';
 		onPreview: (name: string) => void;
 		onDelete: (name: string) => void;
 	}
 
-	let { drawings, drawingPreviews, usedDrawings, filter, onPreview, onDelete }: Props = $props();
+	let { drawings, drawingPreviews, usedDrawings, onPreview, onDelete }: Props = $props();
+
+	let filter = $state<'all' | 'used' | 'orphaned'>('all');
 
 	const filtered = $derived(
 		filter === 'all' || !usedDrawings ? drawings :
@@ -16,6 +17,14 @@
 		drawings.filter(d => !usedDrawings!.has(d))
 	);
 </script>
+
+{#if usedDrawings !== null}
+	<div class="toolbar">
+		<button class="pill" class:active={filter === 'all'} onclick={() => (filter = 'all')}>All</button>
+		<button class="pill" class:active={filter === 'used'} onclick={() => (filter = 'used')}>Used</button>
+		<button class="pill pill-orphaned" class:active={filter === 'orphaned'} onclick={() => (filter = 'orphaned')}>Orphaned</button>
+	</div>
+{/if}
 
 {#if drawings.length === 0}
 	<div class="empty-state">No drawings yet. Insert one with <kbd>/drawing</kbd>.</div>
@@ -52,6 +61,28 @@
 {/if}
 
 <style>
+	.toolbar {
+		display: flex;
+		gap: 0.35rem;
+		padding: 0.6rem 1rem;
+		border-bottom: 1px solid var(--border);
+	}
+
+	.pill {
+		padding: 0.2rem 0.65rem;
+		border-radius: 999px;
+		font-size: 0.75rem;
+		font-family: inherit;
+		background: none;
+		border: 1px solid var(--border);
+		color: var(--muted);
+		cursor: pointer;
+		transition: background 80ms, color 80ms;
+	}
+	.pill:hover { color: var(--text); background: var(--border); }
+	.pill.active { color: var(--text); background: var(--border); }
+	.pill-orphaned.active { color: #e09050; background: rgba(224, 144, 80, 0.1); border-color: rgba(224, 144, 80, 0.3); }
+
 	.empty-state {
 		display: flex;
 		align-items: center;

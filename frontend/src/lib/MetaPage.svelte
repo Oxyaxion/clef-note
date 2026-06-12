@@ -36,7 +36,6 @@
 	let preview = $state<Preview | null>(null);
 	let usedAssets = $state<Set<string> | null>(null);
 	let usedDrawings = $state<Set<string> | null>(null);
-	let filter = $state<'all' | 'used' | 'orphaned'>('all');
 	let shares = $state<ShareMeta[]>([]);
 	let stubs = $state<NoteStub[]>([]);
 	let stubsMaxBytes = $state(500);
@@ -153,13 +152,6 @@
 					No frontmatter <span class="count">{noFrontmatterNotes.length}</span>
 				</button>
 			</div>
-			{#if usedAssets !== null && activeTab !== 'shares' && activeTab !== 'stubs' && activeTab !== 'no-frontmatter'}
-				<div class="filter-pills">
-					<button class="pill" class:active={filter === 'all'} onclick={() => (filter = 'all')}>All</button>
-					<button class="pill" class:active={filter === 'used'} onclick={() => (filter = 'used')}>Used</button>
-					<button class="pill pill-orphaned" class:active={filter === 'orphaned'} onclick={() => (filter = 'orphaned')}>Orphaned</button>
-				</div>
-			{/if}
 		</div>
 	</div>
 
@@ -171,7 +163,6 @@
 			<MediaAssets
 				{assets}
 				{usedAssets}
-				{filter}
 				onPreview={(asset) => (preview = { kind: 'image', asset })}
 				onDelete={removeAsset}
 			/>
@@ -180,7 +171,6 @@
 				{drawings}
 				{drawingPreviews}
 				{usedDrawings}
-				{filter}
 				onPreview={(name) => (preview = { kind: 'drawing', name })}
 				onDelete={removeDrawing}
 			/>
@@ -296,28 +286,6 @@
 		display: flex;
 		gap: 0.15rem;
 	}
-
-	.filter-pills {
-		display: flex;
-		gap: 0.15rem;
-		padding-left: 0.5rem;
-		border-left: 1px solid var(--border);
-	}
-
-	.pill {
-		background: none;
-		border: 1px solid transparent;
-		border-radius: 6px;
-		cursor: pointer;
-		font-size: 0.78rem;
-		font-family: inherit;
-		color: var(--muted);
-		padding: 0.2rem 0.55rem;
-		transition: color 80ms, background 80ms;
-	}
-	.pill:hover { color: var(--text); background: var(--border); }
-	.pill.active { color: var(--text); background: var(--border); }
-	.pill-orphaned.active { color: #e09050; background: rgba(224, 144, 80, 0.1); border-color: rgba(224, 144, 80, 0.3); }
 
 	.tab {
 		background: none;

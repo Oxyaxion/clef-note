@@ -6,12 +6,13 @@
 	interface Props {
 		assets: AssetMeta[];
 		usedAssets: Set<string> | null;
-		filter: 'all' | 'used' | 'orphaned';
 		onPreview: (asset: AssetMeta) => void;
 		onDelete: (name: string) => void;
 	}
 
-	let { assets, usedAssets, filter, onPreview, onDelete }: Props = $props();
+	let { assets, usedAssets, onPreview, onDelete }: Props = $props();
+
+	let filter = $state<'all' | 'used' | 'orphaned'>('all');
 
 	const filtered = $derived(
 		filter === 'all' || !usedAssets ? assets :
@@ -25,6 +26,14 @@
 		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 	}
 </script>
+
+{#if usedAssets !== null}
+	<div class="toolbar">
+		<button class="pill" class:active={filter === 'all'} onclick={() => (filter = 'all')}>All</button>
+		<button class="pill" class:active={filter === 'used'} onclick={() => (filter = 'used')}>Used</button>
+		<button class="pill pill-orphaned" class:active={filter === 'orphaned'} onclick={() => (filter = 'orphaned')}>Orphaned</button>
+	</div>
+{/if}
 
 {#if assets.length === 0}
 	<div class="empty-state">No images yet. Paste or upload one in a note.</div>
@@ -57,6 +66,28 @@
 {/if}
 
 <style>
+	.toolbar {
+		display: flex;
+		gap: 0.35rem;
+		padding: 0.6rem 1rem;
+		border-bottom: 1px solid var(--border);
+	}
+
+	.pill {
+		padding: 0.2rem 0.65rem;
+		border-radius: 999px;
+		font-size: 0.75rem;
+		font-family: inherit;
+		background: none;
+		border: 1px solid var(--border);
+		color: var(--muted);
+		cursor: pointer;
+		transition: background 80ms, color 80ms;
+	}
+	.pill:hover { color: var(--text); background: var(--border); }
+	.pill.active { color: var(--text); background: var(--border); }
+	.pill-orphaned.active { color: #e09050; background: rgba(224, 144, 80, 0.1); border-color: rgba(224, 144, 80, 0.3); }
+
 	.empty-state {
 		display: flex;
 		align-items: center;
