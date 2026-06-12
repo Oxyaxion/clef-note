@@ -71,6 +71,7 @@
 		gap: 0.35rem;
 		padding: 0.6rem 1rem;
 		border-bottom: 1px solid var(--border);
+		margin-bottom: 1rem;
 	}
 
 	.pill {
