@@ -7,7 +7,6 @@ use crate::AppState;
 
 /// settings.json lives at the partitions root — it is global (not per-vault)
 /// and is therefore never inside any vault's git repository.
-
 pub async fn get_settings(State(state): State<Arc<AppState>>) -> Json<Value> {
     let path = state.root_path.join("settings.json");
     match tokio::fs::read_to_string(&path).await {

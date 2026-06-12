@@ -151,20 +151,19 @@ pub fn load(storage_path: &std::path::Path) -> Config {
         }
     }
 
-    if let Some(oidc) = &cfg.oidc {
-        if oidc.issuer_url.trim().is_empty() || oidc.client_id.trim().is_empty()
-            || oidc.client_secret.trim().is_empty() || oidc.redirect_uri.trim().is_empty()
-        {
-            eprintln!("error: [oidc] requires issuer_url, client_id, client_secret, and redirect_uri");
-            std::process::exit(1);
-        }
+    if let Some(oidc) = &cfg.oidc
+        && (oidc.issuer_url.trim().is_empty() || oidc.client_id.trim().is_empty()
+            || oidc.client_secret.trim().is_empty() || oidc.redirect_uri.trim().is_empty())
+    {
+        eprintln!("error: [oidc] requires issuer_url, client_id, client_secret, and redirect_uri");
+        std::process::exit(1);
     }
 
-    if let Some(sync) = &cfg.sync {
-        if sync.remote.trim().is_empty() || sync.token.as_deref().map_or(true, |t| t.trim().is_empty()) || sync.branch.trim().is_empty() {
-            eprintln!("error: [sync] requires remote, branch, and token to be set");
-            std::process::exit(1);
-        }
+    if let Some(sync) = &cfg.sync
+        && (sync.remote.trim().is_empty() || sync.token.as_deref().is_none_or(|t| t.trim().is_empty()) || sync.branch.trim().is_empty())
+    {
+        eprintln!("error: [sync] requires remote, branch, and token to be set");
+        std::process::exit(1);
     }
 
     cfg

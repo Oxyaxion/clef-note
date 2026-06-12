@@ -292,7 +292,7 @@ fn make_snippet(body: &str, query: &str) -> String {
     if let Some(pos) = lower_body.find(&lower_q) {
         let start = pos.saturating_sub(80);
         let end = (pos + lower_q.len() + 80).min(body.len());
-        let start = body.char_indices().map(|(i, _)| i).filter(|&i| i <= start).next_back().unwrap_or(0);
+        let start = body.char_indices().map(|(i, _)| i).rfind(|&i| i <= start).unwrap_or(0);
         let end = body.char_indices().map(|(i, _)| i).find(|&i| i >= end).unwrap_or(body.len());
         let prefix = if start > 0 { "…" } else { "" };
         let suffix = if end < body.len() { "…" } else { "" };
@@ -688,7 +688,7 @@ fn parse_query(q: &str) -> ParsedQuery {
 pub fn index_dir(db: &Db, notes_dir: &std::path::Path) {
     for entry in walkdir::WalkDir::new(notes_dir)
         .into_iter()
-        .filter_entry(|e| !e.file_name().to_str().map_or(false, |s| s.starts_with('.')))
+        .filter_entry(|e| !e.file_name().to_str().is_some_and(|s| s.starts_with('.')))
         .filter_map(|e| e.ok())
     {
         let path = entry.path();

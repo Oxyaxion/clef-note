@@ -66,10 +66,10 @@ pub async fn discover(
         let path = root.join(&slug);
         let name = cfg.name.unwrap_or_else(|| slug.clone());
         let mut sync_cfg = cfg.sync;
-        if let Some(ref mut sync) = sync_cfg {
-            if let Some(token) = partition_tokens.get(&slug) {
-                sync.token = Some(token.clone());
-            }
+        if let Some(ref mut sync) = sync_cfg
+            && let Some(token) = partition_tokens.get(&slug)
+        {
+            sync.token = Some(token.clone());
         }
         let partition = init(slug, name, path, sync_cfg).await;
         partitions.push(Arc::new(partition));

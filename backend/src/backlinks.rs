@@ -26,7 +26,7 @@ impl BacklinkIndex {
             let mut index = BacklinkIndex::default();
             for entry in walkdir::WalkDir::new(&notes_dir)
                 .into_iter()
-                .filter_entry(|e| !e.file_name().to_str().map_or(false, |s| s.starts_with('.')))
+                .filter_entry(|e| !e.file_name().to_str().is_some_and(|s| s.starts_with('.')))
                 .filter_map(|e| e.ok())
             {
                 let path = entry.path();

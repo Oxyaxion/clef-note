@@ -95,7 +95,7 @@ pub fn preprocess_for_share(content: &str) -> String {
 pub async fn purge_expired(state: &AppState) {
     let mut shares = load_shares(state).await;
     let before = shares.len();
-    shares.retain(|_, s| s.expires_at.map_or(true, |exp| Utc::now() <= exp));
+    shares.retain(|_, s| s.expires_at.is_none_or(|exp| Utc::now() <= exp));
     if shares.len() < before {
         save_shares(state, &shares).await;
         tracing::info!("Purged {} expired share(s)", before - shares.len());
@@ -247,13 +247,13 @@ pub async fn get_shared(
         return StatusCode::NOT_FOUND.into_response();
     };
 
-    if let Some(exp) = share.expires_at {
-        if Utc::now() > exp {
-            let mut shares = shares;
-            shares.remove(&slug);
-            save_shares(&state, &shares).await;
-            return StatusCode::GONE.into_response();
-        }
+    if let Some(exp) = share.expires_at
+        && Utc::now() > exp
+    {
+        let mut shares = shares;
+        shares.remove(&slug);
+        save_shares(&state, &shares).await;
+        return StatusCode::GONE.into_response();
     }
 
     if let Some(hash_str) = &share.password_hash {
@@ -263,7 +263,7 @@ pub async fn get_shared(
 
         let provided = headers.get("x-share-password").and_then(|v| v.to_str().ok());
         let ok = provided
-            .and_then(|pw| PasswordHash::new(hash_str).ok().map(|h| (pw, h)))
+            .zip(PasswordHash::new(hash_str).ok())
             .map(|(pw, h)| Argon2::default().verify_password(pw.as_bytes(), &h).is_ok())
             .unwrap_or(false);
 

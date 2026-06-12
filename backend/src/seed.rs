@@ -9,7 +9,7 @@ fn has_any_notes(storage_dir: &Path) -> bool {
         .filter_entry(|e| {
             !e.file_name()
                 .to_str()
-                .map_or(false, |s| s.starts_with('.'))
+                .is_some_and(|s| s.starts_with('.'))
         })
         .filter_map(|e| e.ok())
         .any(|e| e.path().extension().and_then(|x| x.to_str()) == Some("md"))

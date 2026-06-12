@@ -246,6 +246,6 @@ pub async fn auth_config_handler(
     Json(AuthConfig {
         oidc_enabled: oidc.is_some(),
         provider_name: oidc.map(|c| c.provider_name.clone()),
-        password_disabled: oidc.map_or(false, |c| c.disable_password_login),
+        password_disabled: oidc.is_some_and(|c| c.disable_password_login),
     })
 }

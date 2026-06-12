@@ -148,7 +148,7 @@ fn stage_all(repo: &Repository) -> Result<bool, git2::Error> {
             Ok(diff.deltas().count() > 0)
         }
         // No HEAD yet (empty repo): any staged file counts as a change.
-        Err(_) => Ok(repo.index()?.len() > 0),
+        Err(_) => Ok(!repo.index()?.is_empty()),
     }
 }
 
