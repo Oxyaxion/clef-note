@@ -96,13 +96,9 @@ impl Db {
             project: parsed.project.clone(),
             last_modified: parsed.last_modified.clone(),
         };
-        let has_frontmatter = parsed.frontmatter
-            .as_object()
-            .map(|m| !m.is_empty())
-            .unwrap_or(false);
         self.0.write().unwrap().insert(
             name.to_string(),
-            StoredNote { row, body: parsed.body.clone(), has_frontmatter },
+            StoredNote { row, body: parsed.body.clone(), has_frontmatter: parsed.has_frontmatter },
         );
     }
 

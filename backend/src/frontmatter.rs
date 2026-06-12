@@ -6,6 +6,7 @@ use std::sync::OnceLock;
 
 pub struct ParsedNote {
     pub frontmatter: Value,
+    pub has_frontmatter: bool,
     pub body: String,
     pub title: Option<String>,
     pub tags: Vec<String>,
@@ -63,6 +64,7 @@ fn extract_h1(body: &str) -> Option<String> {
 }
 
 pub fn parse_note(content: &str) -> ParsedNote {
+    let has_frontmatter = content.starts_with("---\n") || content.starts_with("---\r\n");
     let matter = Matter::<YAML>::new();
     let (fm_data, raw_body) = match matter.parse(content) {
         Ok(parsed) => (parsed.data, parsed.content),
@@ -150,6 +152,7 @@ pub fn parse_note(content: &str) -> ParsedNote {
 
     ParsedNote {
         frontmatter,
+        has_frontmatter,
         body,
         title,
         tags,
