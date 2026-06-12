@@ -139,14 +139,14 @@ Create `/usr/local/etc/rc.d/clef-note`:
 
 name="clef_note"
 rcvar="${name}_enable"
-procname="/usr/local/sbin/clef-note/clef-note"
 pidfile="/var/run/${name}.pid"
 clef_note_config="/usr/local/etc/clef-note/clef-note.toml"
+clef_note_bin="/usr/local/sbin/clef-note/clef-note"
 
 load_rc_config ${name}
 
 command="/usr/sbin/daemon"
-command_args="-P ${pidfile} -r -f ${procname} --config ${clef_note_config}"
+command_args="-P ${pidfile} -r -o /var/log/clef-note.log -f ${clef_note_bin} --config ${clef_note_config}"
 
 run_rc_command "$1"
 ```
