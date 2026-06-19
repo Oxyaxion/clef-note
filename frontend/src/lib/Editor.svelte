@@ -10,6 +10,15 @@
 	import Typography from '@tiptap/extension-typography';
 	import Link from '@tiptap/extension-link';
 	import { Markdown, type MarkdownStorage } from 'tiptap-markdown';
+	import type { MarkdownSerializerState } from 'prosemirror-markdown';
+	import type { Node as PmNode } from 'prosemirror-model';
+
+	type TableSerializerState = MarkdownSerializerState & { inTable: boolean };
+	const childNodes = (node: PmNode): PmNode[] => {
+		const result: PmNode[] = [];
+		node.forEach(child => result.push(child));
+		return result;
+	};
 	import { TaskListMd, TaskItemMd } from './taskExtensions';
 	import { WikiLink } from './wikiLink';
 	import { createWikiLinkSuggestion } from './wikiLinkSuggestion';
@@ -87,7 +96,45 @@
 				TaskListMd,
 				TaskItemMd,
 				CodeBlockLowlight.configure({ lowlight }).extend({ addNodeView: makeCodeBlockNodeView }),
-				Table.configure({ resizable: false }),
+				Table.configure({ resizable: false }).extend({
+					addStorage() {
+						return {
+							markdown: {
+								serialize(state: TableSerializerState, node: PmNode) {
+									const rows = childNodes(node);
+									const isComplex = rows.some(row =>
+										childNodes(row).some(cell =>
+											cell.attrs.colspan > 1 || cell.attrs.rowspan > 1 || cell.childCount > 1
+										)
+									);
+									if (isComplex || !rows.length) {
+										state.write('[table]');
+										state.closeBlock(node);
+										return;
+									}
+									state.inTable = true;
+									rows.forEach((row, i) => {
+										const cells = childNodes(row);
+										state.write('| ');
+										cells.forEach((col, j) => {
+											if (j) state.write(' | ');
+											const cellContent = col.firstChild;
+											if (cellContent?.textContent.trim()) state.renderInline(cellContent);
+										});
+										state.write(' |');
+										state.ensureNewLine();
+										if (i === 0) {
+											state.write(`| ${cells.map(() => '---').join(' | ')} |`);
+											state.ensureNewLine();
+										}
+									});
+									state.closeBlock(node);
+									state.inTable = false;
+								},
+							},
+						};
+					},
+				}),
 				TableRow,
 				TableCell,
 				TableHeader,
