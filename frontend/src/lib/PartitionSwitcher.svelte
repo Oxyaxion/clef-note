@@ -113,7 +113,7 @@
 						>
 							<span class="vault-item-name">{partition.name}</span>
 							{#if partition.has_sync}
-								<svg class="sync-dot" width="8" height="8" viewBox="0 0 10 10" fill="none" aria-label="synced" title="Git sync enabled">
+								<svg class="sync-dot" width="8" height="8" viewBox="0 0 10 10" fill="none" aria-label="Git sync enabled">
 									<circle cx="5" cy="5" r="3.5" stroke="currentColor" stroke-width="1.2"/>
 									<path d="M3.5 5l1 1 2-2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
 								</svg>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { createShare } from './api';
 
 	interface Props {
@@ -22,7 +23,7 @@
 		return `${base}-${rand}`;
 	}
 
-	let slug = $state(generateSlug(noteName));
+	let slug = $state(untrack(() => generateSlug(noteName)));
 	let slugError = $state('');
 
 	function validateSlug(s: string): string {
@@ -115,12 +116,17 @@
 	function onBackdropClick(e: MouseEvent) {
 		if (e.target === e.currentTarget) onClose();
 	}
+
+	function onBackdropKeydown(e: KeyboardEvent) {
+		if ((e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) onClose();
+	}
 </script>
 
 <svelte:window onkeydown={onKeydown} />
 
-<div class="backdrop" onclick={onBackdropClick} role="dialog" aria-modal="true" aria-label="Share note">
-	<div class="modal">
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="backdrop" onclick={onBackdropClick} onkeydown={onBackdropKeydown}>
+	<div class="modal" role="dialog" aria-modal="true" aria-label="Share note" tabindex="-1">
 		<div class="modal-header">
 			<span class="modal-title">Share note</span>
 			<button class="close-btn" onclick={onClose} aria-label="Close">
@@ -181,8 +187,8 @@
 				</div>
 
 				<div class="field">
-					<label class="field-label">Expiry</label>
-					<div class="expiry-pills">
+					<span class="field-label">Expiry</span>
+					<div class="expiry-pills" role="group" aria-label="Expiry">
 						{#each EXPIRY_OPTIONS as opt}
 							<button
 								class="pill"

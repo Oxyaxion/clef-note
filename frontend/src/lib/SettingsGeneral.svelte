@@ -141,21 +141,6 @@
 		padding-top: 1rem;
 	}
 
-	.section-desc {
-		margin: -0.5rem 0 0;
-		font-size: 0.8rem;
-		color: var(--muted);
-	}
-
-	.section-desc kbd {
-		font-size: 0.75rem;
-		padding: 0.1rem 0.35rem;
-		border: 1px solid var(--border);
-		border-radius: 4px;
-		background: var(--sidebar-bg);
-		font-family: inherit;
-		color: var(--text);
-	}
 
 	.setting-row {
 		display: flex;

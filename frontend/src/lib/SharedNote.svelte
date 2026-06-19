@@ -195,7 +195,7 @@
 		line-height: 1.4;
 	}
 
-	.action-btn:hover, .action-btn.active {
+	.action-btn:hover {
 		border-color: var(--accent, #5b5bd6);
 		color: var(--accent, #5b5bd6);
 	}
