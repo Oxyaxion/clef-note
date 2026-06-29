@@ -1,24 +1,35 @@
 <script lang="ts">
-	import { deleteNote, type NoteStub, type NoteMeta } from './api';
+	import { deleteNote, moveToPartition, type NoteStub, type NoteMeta, type PartitionInfo } from './api';
 	import { emit } from './events';
 	import { buildTree, flatten } from './sidebarTree';
 
 	interface Props {
 		stubs: NoteStub[];
 		notes: NoteMeta[];
+		partitions: PartitionInfo[];
 		maxBytes: number;
 		onMaxBytesChange: (v: number) => void;
 		onNavigate: (name: string) => void;
 		onDeleted: (name: string) => void;
 	}
 
-	let { stubs, notes, maxBytes, onMaxBytesChange, onNavigate, onDeleted }: Props = $props();
+	let { stubs, notes, partitions, maxBytes, onMaxBytesChange, onNavigate, onDeleted }: Props = $props();
 
 	let selected = $state(new Set<string>());
-	let confirming = $state(false);
-	let deleting = $state(false);
 	let showAll = $state(false);
 	let openFolders = $state(new Set<string>());
+
+	// Discriminated union keeps bulk-action state clean and mutually exclusive.
+	type BulkAction =
+		| { kind: 'idle' }
+		| { kind: 'delete-confirm' }
+		| { kind: 'move-pick' }
+		| { kind: 'move-confirm'; slug: string; name: string }
+		| { kind: 'executing' };
+
+	let bulk = $state<BulkAction>({ kind: 'idle' });
+
+	const otherPartitions = $derived(partitions.filter(p => !p.active));
 
 	const THRESHOLDS = [
 		{ label: 'All',     value: -1  },
@@ -109,10 +120,10 @@
 		openFolders = new Set();
 	}
 
-	// ── Delete ────────────────────────────────────────────────────────────────
+	// ── Bulk actions ──────────────────────────────────────────────────────────
 
-	async function deleteSelected() {
-		deleting = true;
+	async function executeDelete() {
+		bulk = { kind: 'executing' };
 		const names = [...selected];
 		for (const name of names) {
 			try {
@@ -122,8 +133,21 @@
 			} catch { /* skip failed */ }
 		}
 		selected = new Set();
-		deleting = false;
-		confirming = false;
+		bulk = { kind: 'idle' };
+	}
+
+	async function executeMove(targetSlug: string) {
+		bulk = { kind: 'executing' };
+		const names = [...selected];
+		for (const name of names) {
+			try {
+				await moveToPartition(targetSlug, name, false);
+				emit(document, 'notes:changed');
+				onDeleted(name);
+			} catch { /* skip failed */ }
+		}
+		selected = new Set();
+		bulk = { kind: 'idle' };
 	}
 
 	// ── Stub helpers ──────────────────────────────────────────────────────────
@@ -152,16 +176,33 @@
 	</div>
 	{#if selected.size > 0}
 		<div class="bulk-actions">
-			{#if confirming}
+			{#if bulk.kind === 'delete-confirm'}
 				<span class="confirm-label">Delete {selected.size} note{selected.size > 1 ? 's' : ''}?</span>
-				<button class="confirm-btn" disabled={deleting} onclick={deleteSelected}>
-					{deleting ? 'Deleting…' : 'Confirm'}
-				</button>
-				<button class="cancel-btn" disabled={deleting} onclick={() => (confirming = false)}>Cancel</button>
+				<button class="confirm-btn" onclick={executeDelete}>Confirm</button>
+				<button class="cancel-btn" onclick={() => (bulk = { kind: 'idle' })}>Cancel</button>
+			{:else if bulk.kind === 'move-pick'}
+				<span class="confirm-label">Move to:</span>
+				{#each otherPartitions as p}
+					<button class="partition-btn" onclick={() => (bulk = { kind: 'move-confirm', slug: p.slug, name: p.name })}>
+						{p.name}
+					</button>
+				{/each}
+				<button class="cancel-btn" onclick={() => (bulk = { kind: 'idle' })}>Cancel</button>
+			{:else if bulk.kind === 'move-confirm'}
+				<span class="confirm-label">Move {selected.size} note{selected.size > 1 ? 's' : ''} to "{bulk.name}"?</span>
+				<button class="confirm-btn" onclick={() => bulk.kind === 'move-confirm' && executeMove(bulk.slug)}>Confirm</button>
+				<button class="cancel-btn" onclick={() => (bulk = { kind: 'idle' })}>Cancel</button>
+			{:else if bulk.kind === 'executing'}
+				<span class="confirm-label">Working…</span>
 			{:else}
-				<button class="delete-selected-btn" onclick={() => (confirming = true)}>
+				<button class="delete-selected-btn" onclick={() => (bulk = { kind: 'delete-confirm' })}>
 					Delete {selected.size} selected
 				</button>
+				{#if otherPartitions.length > 0}
+					<button class="move-btn" onclick={() => (bulk = { kind: 'move-pick' })}>
+						Move to…
+					</button>
+				{/if}
 			{/if}
 		</div>
 	{/if}
@@ -320,7 +361,32 @@
 	}
 
 	.delete-selected-btn:hover, .confirm-btn:hover { opacity: 0.85; }
-	.confirm-btn:disabled { opacity: 0.6; cursor: default; }
+
+	.move-btn {
+		font-size: 0.75rem;
+		padding: 0.2rem 0.6rem;
+		border-radius: 4px;
+		border: 1px solid var(--accent);
+		background: none;
+		color: var(--accent);
+		cursor: pointer;
+		transition: background 80ms;
+	}
+
+	.move-btn:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+
+	.partition-btn {
+		font-size: 0.75rem;
+		padding: 0.2rem 0.6rem;
+		border-radius: 4px;
+		border: 1px solid var(--accent);
+		background: color-mix(in srgb, var(--accent) 10%, transparent);
+		color: var(--accent);
+		cursor: pointer;
+		transition: background 80ms;
+	}
+
+	.partition-btn:hover { background: color-mix(in srgb, var(--accent) 22%, transparent); }
 
 	.cancel-btn {
 		font-size: 0.75rem;

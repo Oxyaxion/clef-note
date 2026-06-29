@@ -16,13 +16,16 @@
 
 	const BASE = import.meta.env.VITE_API_BASE ?? '';
 
+	import type { PartitionInfo } from './api';
+
 	interface Props {
 		notes: NoteMeta[];
+		partitions?: PartitionInfo[];
 		onClose: () => void;
 		onNavigate: (name: string) => void;
 		onNoteDeleted?: (name: string) => void;
 	}
-	let { notes, onClose, onNavigate, onNoteDeleted }: Props = $props();
+	let { notes, partitions = [], onClose, onNavigate, onNoteDeleted }: Props = $props();
 
 	type Preview =
 		| { kind: 'image'; asset: AssetMeta }
@@ -183,6 +186,7 @@
 			<MediaStubs
 				{stubs}
 				{notes}
+				{partitions}
 				maxBytes={stubsMaxBytes}
 				onMaxBytesChange={async (v) => { stubsMaxBytes = v; await reloadStubs(); }}
 				onNavigate={(name) => { onClose(); onNavigate(name); }}
