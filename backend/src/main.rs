@@ -3,6 +3,7 @@ mod backlinks;
 mod config;
 mod db;
 mod drawings;
+mod folders;
 mod frontend;
 mod frontmatter;
 mod key;
@@ -265,6 +266,7 @@ async fn run_server(state: Arc<AppState>, port: u16) {
     let protected = Router::new()
         .route("/notes", get(notes::list_notes))
         .route("/notes/{*name}", get(notes::get_note).put(notes::put_note).patch(notes::rename_note).delete(notes::delete_note))
+        .route("/api/folders/{*path}", patch(folders::rename_folder))
         .route("/backlinks/{*name}", get(backlinks::get_backlinks))
         .route("/assets", post(notes::upload_asset))
         .route("/api/assets", get(notes::list_assets))

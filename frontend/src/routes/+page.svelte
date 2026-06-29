@@ -18,6 +18,8 @@
 		listPartitions,
 		switchPartition,
 		renamePartition,
+		renameNote,
+		renameFolder,
 		moveToPartition,
 		serializeFrontmatter,
 		session,
@@ -332,6 +334,31 @@
 		selected = newName;
 	}
 
+	async function handleSidebarMove(oldPath: string, newPath: string, isFolder: boolean) {
+		await autoSave.flush();
+		try {
+			if (isFolder) {
+				await renameFolder(oldPath, newPath);
+				const prefix = oldPath + '/';
+				notes = notes.map(n =>
+					n.name.startsWith(prefix)
+						? { ...n, name: newPath + n.name.slice(oldPath.length) }
+						: n
+				);
+				if (selected?.startsWith(prefix)) {
+					selected = newPath + selected.slice(oldPath.length);
+				}
+			} else {
+				await renameNote(oldPath, newPath);
+				notes = notes.map(n => n.name === oldPath ? { ...n, name: newPath } : n);
+				if (selected === oldPath) selected = newPath;
+			}
+			emit(document, 'notes:changed');
+		} catch (e) {
+			console.error('Sidebar move failed:', e);
+		}
+	}
+
 	function handleDelete() {
 		if (!selected) return;
 		const name = selected;
@@ -554,6 +581,7 @@
 		onPartitionSwitch={handlePartitionSwitch}
 		onPartitionCreated={handlePartitionCreated}
 		onPartitionDeleted={handlePartitionDeleted}
+		onMove={handleSidebarMove}
 	/>
 
 	<main class="main">

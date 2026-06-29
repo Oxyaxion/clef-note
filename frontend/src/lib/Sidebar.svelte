@@ -21,9 +21,10 @@
 		onPartitionSwitch?: (slug: string) => void;
 		onPartitionCreated?: (partition: PartitionInfo) => void;
 		onPartitionDeleted?: (slug: string) => void;
+		onMove?: (oldPath: string, newPath: string, isFolder: boolean) => void;
 	}
 
-	let { notes, selected, partitions = [], mobileOpen = false, startCreating = false, hidden = false, onSelect, onNew, onMobileClose, onCreateStarted, onSettings, onPartitionSwitch, onPartitionCreated, onPartitionDeleted }: Props = $props();
+	let { notes, selected, partitions = [], mobileOpen = false, startCreating = false, hidden = false, onSelect, onNew, onMobileClose, onCreateStarted, onSettings, onPartitionSwitch, onPartitionCreated, onPartitionDeleted, onMove }: Props = $props();
 
 	$effect(() => {
 		if (startCreating) {
@@ -118,6 +119,87 @@
 		onNew(trimmed);
 		newName = '';
 		creating = false;
+	}
+
+	// ── Drag and drop ─────────────────────────────────────────────────────────
+
+	type DragItem = { path: string; kind: 'note' | 'folder' };
+
+	let dragItem = $state<DragItem | null>(null);
+	let dropTarget = $state<string | null>(null); // null = not dragging, '' = root, path = folder
+	let autoOpenTimer: ReturnType<typeof setTimeout> | null = null;
+
+	function parentOf(path: string): string {
+		const i = path.lastIndexOf('/');
+		return i === -1 ? '' : path.slice(0, i);
+	}
+
+	function onDragStart(e: DragEvent, item: DisplayItem) {
+		e.dataTransfer!.effectAllowed = 'move';
+		dragItem = { path: item.path, kind: item.kind };
+	}
+
+	function onDragEnd() {
+		if (autoOpenTimer !== null) clearTimeout(autoOpenTimer);
+		autoOpenTimer = null;
+		dragItem = null;
+		dropTarget = null;
+	}
+
+	function onItemDragEnter(e: DragEvent, item: DisplayItem) {
+		if (!dragItem) return;
+		e.preventDefault();
+		const target = item.kind === 'folder' ? item.path : parentOf(item.path);
+		dropTarget = target;
+		if (item.kind === 'folder' && !openFolders.has(item.path)) {
+			if (autoOpenTimer !== null) clearTimeout(autoOpenTimer);
+			autoOpenTimer = setTimeout(() => toggleFolder(item.path), 600);
+		}
+	}
+
+	function onItemDragOver(e: DragEvent) {
+		if (!dragItem) return;
+		e.preventDefault();
+		e.dataTransfer!.dropEffect = 'move';
+	}
+
+	function onItemDrop(e: DragEvent, item: DisplayItem) {
+		e.preventDefault();
+		if (!dragItem) return;
+		performDrop(item.kind === 'folder' ? item.path : parentOf(item.path));
+	}
+
+	function onListDragOver(e: DragEvent) {
+		if (!dragItem) return;
+		if (e.target !== e.currentTarget) return;
+		e.preventDefault();
+		dropTarget = '';
+	}
+
+	function onListDrop(e: DragEvent) {
+		if (e.target !== e.currentTarget) return;
+		e.preventDefault();
+		if (!dragItem) return;
+		performDrop('');
+	}
+
+	function performDrop(targetFolder: string) {
+		if (!dragItem) return;
+		if (autoOpenTimer !== null) clearTimeout(autoOpenTimer);
+		autoOpenTimer = null;
+
+		const basename = dragItem.path.split('/').pop()!;
+		const newPath = targetFolder ? `${targetFolder}/${basename}` : basename;
+
+		const item = dragItem;
+		dragItem = null;
+		dropTarget = null;
+
+		if (newPath === item.path) return;
+		// Prevent moving a folder into one of its own descendants (backend also checks).
+		if (item.kind === 'folder' && newPath.startsWith(`${item.path}/`)) return;
+
+		onMove?.(item.path, newPath, item.kind === 'folder');
 	}
 </script>
 
@@ -252,14 +334,26 @@
 				<div class="index-divider"></div>
 			{/if}
 
-			<ul class="note-list">
+			<ul
+				class="note-list"
+				class:drop-root={dragItem && dropTarget === ''}
+				ondragover={onListDragOver}
+				ondrop={onListDrop}
+			>
 				{#each items as item (item.kind + ':' + item.path)}
 					<li>
 						{#if item.kind === 'folder'}
 							<button
 								onclick={() => toggleFolder(item.path)}
 								class="folder-btn"
+								class:drop-target={dropTarget === item.path}
 								style="padding-left: calc(1rem + {item.depth * 0.9}rem);"
+								draggable="true"
+								ondragstart={(e) => onDragStart(e, item)}
+								ondragend={onDragEnd}
+								ondragenter={(e) => onItemDragEnter(e, item)}
+								ondragover={onItemDragOver}
+								ondrop={(e) => onItemDrop(e, item)}
 							>
 								<span class="folder-chevron">{item.open ? '▼' : '▶'}</span>
 								{item.label}
@@ -270,6 +364,12 @@
 								class="note-btn"
 								class:active={selected === item.path}
 								style="padding-left: calc(1rem + {item.depth * 0.9}rem);"
+								draggable="true"
+								ondragstart={(e) => onDragStart(e, item)}
+								ondragend={onDragEnd}
+								ondragenter={(e) => onItemDragEnter(e, item)}
+								ondragover={onItemDragOver}
+								ondrop={(e) => onItemDrop(e, item)}
 							>
 								{#if item.pinned}<span class="pin-dot" aria-hidden="true"></span>{/if}
 								{item.label}
@@ -689,6 +789,29 @@
 	.footer-btn svg {
 		color: var(--muted);
 		flex-shrink: 0;
+	}
+
+	/* ── Drag and drop ──────────────────────────────────── */
+	.folder-btn[draggable="true"],
+	.note-btn[draggable="true"] {
+		cursor: grab;
+	}
+
+	.folder-btn[draggable="true"]:active,
+	.note-btn[draggable="true"]:active {
+		cursor: grabbing;
+	}
+
+	.folder-btn.drop-target {
+		background: color-mix(in srgb, var(--accent) 18%, transparent);
+		color: var(--text);
+		border-radius: 4px;
+	}
+
+	.note-list.drop-root {
+		outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
+		outline-offset: -2px;
+		border-radius: 4px;
 	}
 
 	/* ── Mobile ──────────────────────────────────────────── */

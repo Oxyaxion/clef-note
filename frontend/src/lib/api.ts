@@ -117,6 +117,16 @@ export async function renameNote(oldName: string, newName: string): Promise<void
     if (!res.ok) throw new Error('Rename failed');
 }
 
+export async function renameFolder(oldPath: string, newPath: string): Promise<void> {
+    const res = await apiFetch(`${BASE}/api/folders/${encodeName(oldPath)}`, {
+        method: 'PATCH',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ new_path: newPath }),
+    });
+    if (res.status === 409) throw new Error('A folder at that path already exists');
+    if (!res.ok) throw new Error('Folder rename failed');
+}
+
 export async function getBacklinks(name: string, signal?: AbortSignal): Promise<BacklinksResponse> {
     const res = await apiFetch(`${BASE}/backlinks/${encodeName(name)}`, { headers: authHeaders(), signal });
     if (!res.ok) throw new Error('Failed to fetch backlinks');
