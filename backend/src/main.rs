@@ -190,11 +190,9 @@ fn start_sync_tasks(state: &Arc<AppState>) {
     for (slug, cfg, storage, status) in sync_tasks {
         let slug_log = slug.clone();
         tokio::spawn(async move {
-            tracing::info!("Starting sync for partition '{}'", slug_log);
-            sync::run_sync(&cfg, &storage, &status).await;
-
             let interval_secs = cfg.interval_minutes.unwrap_or(0) * 60;
             if interval_secs > 0 {
+                tracing::info!("Starting periodic sync for partition '{}'", slug_log);
                 let mut ticker = tokio::time::interval(
                     tokio::time::Duration::from_secs(interval_secs),
                 );
