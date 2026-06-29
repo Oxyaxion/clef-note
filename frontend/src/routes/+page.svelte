@@ -16,7 +16,9 @@
 		deleteNote,
 		getSettings,
 		listPartitions,
+		switchPartition,
 		renamePartition,
+		moveToPartition,
 		serializeFrontmatter,
 		session,
 		logout,
@@ -72,7 +74,7 @@
 		(currentSettings.partitions[activePartitionSlug]?.theme ?? PARTITION_DEFAULTS.theme) as ThemeId
 	);
 	const nav = createNavigation();
-	let confirmDialog = $state<{ message: string; onConfirm: () => void } | null>(null);
+	let confirmDialog = $state<{ message: string; confirmLabel: string; onConfirm: () => void } | null>(null);
 	let loadError = $state<string | null>(null);
 
 	const frontmatterMd = $derived(serializeFrontmatter(noteFrontmatter));
@@ -143,23 +145,39 @@
 		applyTheme(loadTheme());
 	});
 
-	// Re-run when loggedIn changes: fetch initial notes + settings + partitions.
+	// Re-run when loggedIn changes: fetch initial settings + partitions, apply the
+	// configured default partition, then load that partition's notes.
 	$effect(() => {
 		if (!loggedIn) return;
-		Promise.all([listNotes(), getSettings(), listPartitions()]).then(([n, raw, v]) => {
-			notes = n;
-			partitions = v;
-			const slugs = v.map((p: PartitionInfo) => p.slug);
-			const migrated = migrateSettings(raw as Record<string, unknown>, slugs);
-			currentSettings = migrated;
-			const ps = activePartitionSettings(migrated, v.find((p: PartitionInfo) => p.active)?.slug ?? '');
-			applySettings(migrated, ps);
-			setDateFormat(ps.dateFormat ?? PARTITION_DEFAULTS.dateFormat);
-			// Save migrated settings if they were in old format
-			if ('fontFamily' in (raw as object) || 'homePages' in (raw as object)) putSettings(migrated);
-			const home = ps.homePage?.trim();
-			if (home) selectNote(home).catch(() => {});
-		});
+		(async () => {
+			try {
+				const [raw, v0] = await Promise.all([getSettings(), listPartitions()]);
+				const slugs = v0.map((p: PartitionInfo) => p.slug);
+				const migrated = migrateSettings(raw as Record<string, unknown>, slugs);
+
+				// Switch to the default partition before loading notes, if set and not already active.
+				let v = v0;
+				const def = migrated.defaultPartition?.trim();
+				const activeNow = v0.find((p: PartitionInfo) => p.active)?.slug;
+				if (def && slugs.includes(def) && def !== activeNow) {
+					await switchPartition(def);
+					v = await listPartitions();
+				}
+
+				notes = await listNotes();
+				partitions = v;
+				currentSettings = migrated;
+				const ps = activePartitionSettings(migrated, v.find((p: PartitionInfo) => p.active)?.slug ?? '');
+				applySettings(migrated, ps);
+				setDateFormat(ps.dateFormat ?? PARTITION_DEFAULTS.dateFormat);
+				// Save migrated settings if they were in old format
+				if ('fontFamily' in (raw as object) || 'homePages' in (raw as object)) putSettings(migrated);
+				const home = ps.homePage?.trim();
+				if (home) selectNote(home).catch(() => {});
+			} catch {
+				// ignore — user can retry
+			}
+		})();
 	});
 
 	// Re-run when loggedIn changes: subscribe to wiki-link navigation events.
@@ -299,6 +317,7 @@
 		const name = selected;
 		confirmDialog = {
 			message: `Delete "${name}"? This action cannot be undone.`,
+			confirmLabel: 'Delete',
 			onConfirm: async () => {
 				confirmDialog = null;
 				autoSave.cancel();   // drop any pending edit so we don't resurrect the note
@@ -308,6 +327,52 @@
 				await deleteNote(name);
 				notes = notes.filter(n => n.name !== name);
 				emit(document, 'notes:changed');
+			},
+		};
+	}
+
+	async function doMove(targetSlug: string, sourcePath: string, isFolder: boolean) {
+		// Persist any pending edit before the backend moves the file, otherwise a
+		// late save would recreate the note in the source partition.
+		await autoSave.flush();
+		try {
+			const moved = await moveToPartition(targetSlug, sourcePath, isFolder);
+			const movedFrom = new Set(moved.map(m => m.from));
+			notes = notes.filter(n => !movedFrom.has(n.name));
+			if (selected && movedFrom.has(selected)) {
+				selected = null;
+				noteContent = '';
+				noteFrontmatter = {};
+			}
+			emit(document, 'notes:changed');
+		} catch {
+			loadError = 'Move failed.';
+		}
+	}
+
+	function handleMoveNote(name: string, targetSlug: string) {
+		const target = partitions.find(p => p.slug === targetSlug);
+		if (!target) return;
+		confirmDialog = {
+			message: `Move "${name}" to "${target.name}"? Referenced images and drawings will be copied.`,
+			confirmLabel: 'Move',
+			onConfirm: async () => {
+				confirmDialog = null;
+				await doMove(targetSlug, name, false);
+			},
+		};
+	}
+
+	function handleMoveFolder(folder: string, targetSlug: string) {
+		const target = partitions.find(p => p.slug === targetSlug);
+		if (!target) return;
+		const count = notes.filter(n => n.name.startsWith(folder + '/')).length;
+		confirmDialog = {
+			message: `Move folder "${folder}/" (${count} note${count === 1 ? '' : 's'}) to "${target.name}"? Referenced images and drawings will be copied.`,
+			confirmLabel: 'Move',
+			onConfirm: async () => {
+				confirmDialog = null;
+				await doMove(targetSlug, folder, true);
 			},
 		};
 	}
@@ -381,7 +446,7 @@
 {#if confirmDialog}
 	<ConfirmDialog
 		message={confirmDialog.message}
-		confirmLabel="Delete"
+		confirmLabel={confirmDialog.confirmLabel}
 		onConfirm={confirmDialog.onConfirm}
 		onCancel={() => (confirmDialog = null)}
 	/>
@@ -398,6 +463,7 @@
 	<Settings
 		{activePartitionSlug}
 		{activePartitionName}
+		{partitions}
 		initialSettings={currentSettings}
 		onClose={() => (settingsOpen = false)}
 		onLogout={async () => { await logout(); loggedIn = false; }}
@@ -434,6 +500,8 @@
 		onMediaLibrary={() => (metaPageOpen = true)}
 		onShare={selected ? () => (shareModalOpen = true) : undefined}
 		onPartitionSwitch={handlePartitionSwitch}
+		onMoveNote={handleMoveNote}
+		onMoveFolder={handleMoveFolder}
 	/>
 {/if}
 

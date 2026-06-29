@@ -402,6 +402,27 @@ export async function deletePartition(slug: string): Promise<void> {
     if (!res.ok) throw new Error('Failed to delete partition');
 }
 
+export interface MovedNote {
+    from: string;
+    to: string;
+}
+
+/** Move a note (or a whole folder) from the active partition to `targetSlug`. */
+export async function moveToPartition(
+    targetSlug: string,
+    sourcePath: string,
+    isFolder: boolean,
+): Promise<MovedNote[]> {
+    const res = await apiFetch(`${BASE}/api/partitions/move`, {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ target_slug: targetSlug, source_path: sourcePath, is_folder: isFolder }),
+    });
+    if (!res.ok) throw new Error('Failed to move note');
+    const data = await res.json();
+    return data.moved;
+}
+
 // ── Git sync ──────────────────────────────────────────────────────────────────
 
 export interface SyncStatus {

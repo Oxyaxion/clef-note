@@ -740,7 +740,7 @@ mod tests {
     fn insert(db: &Db, row: NoteRow) {
         db.0.write().unwrap().insert(
             row.name.clone(),
-            StoredNote { row, body: String::new() },
+            StoredNote { row, body: String::new(), has_frontmatter: false },
         );
     }
 

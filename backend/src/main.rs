@@ -6,6 +6,7 @@ mod drawings;
 mod frontend;
 mod frontmatter;
 mod key;
+mod move_notes;
 mod notes;
 mod oidc;
 mod openapi;
@@ -289,6 +290,7 @@ async fn run_server(state: Arc<AppState>, port: u16) {
         .route("/api/shares/{slug}", delete(shares::delete_share).patch(shares::update_share))
         .route("/api/partitions", get(partitions::list_partitions).post(partitions::create_partition))
         .route("/api/partitions/active", post(partitions::switch_partition))
+        .route("/api/partitions/move", post(move_notes::move_to_partition))
         .route("/api/partitions/{slug}", patch(partitions::rename_partition).delete(partitions::delete_partition))
         .route("/auth/logout", post(auth::logout))
         .layer(middleware::from_fn_with_state(state.clone(), auth::middleware))

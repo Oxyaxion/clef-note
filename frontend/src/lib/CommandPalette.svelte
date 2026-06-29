@@ -36,9 +36,11 @@
 		onMediaLibrary: () => void;
 		onShare?: () => void;
 		onPartitionSwitch?: (slug: string) => void;
+		onMoveNote?: (name: string, targetSlug: string) => void;
+		onMoveFolder?: (folder: string, targetSlug: string) => void;
 	}
 
-	let { notes, selected, noteMarkdown = '', rawView = false, currentTheme = 'default', partitions = [], onSelect, onClose, onNewNote, onRename, onDelete, onToggleRaw, onSetTheme, onSettings, onMediaLibrary, onShare, onPartitionSwitch }: Props = $props();
+	let { notes, selected, noteMarkdown = '', rawView = false, currentTheme = 'default', partitions = [], onSelect, onClose, onNewNote, onRename, onDelete, onToggleRaw, onSetTheme, onSettings, onMediaLibrary, onShare, onPartitionSwitch, onMoveNote, onMoveFolder }: Props = $props();
 
 	let query = $state('');
 	let selectedIndex = $state(0);
@@ -111,6 +113,28 @@
 			icon: '✕',
 			action: () => { onClose(); onDelete(); },
 		},
+		// Move the open note — or its parent folder — to another partition.
+		...partitions.filter(p => !p.active).flatMap(p => {
+			const cmds: Command[] = [{
+				id: `move-note-${p.slug}`,
+				label: `Move note to: ${p.name}`,
+				hint: selected!,
+				icon: '⇄',
+				action: () => { onClose(); onMoveNote?.(selected!, p.slug); },
+			}];
+			const slash = selected!.lastIndexOf('/');
+			if (slash > 0) {
+				const folder = selected!.slice(0, slash);
+				cmds.push({
+					id: `move-folder-${p.slug}`,
+					label: `Move folder ${folder}/ to: ${p.name}`,
+					hint: `${folder}/`,
+					icon: '⇄',
+					action: () => { onClose(); onMoveFolder?.(folder, p.slug); },
+				});
+			}
+			return cmds;
+		}),
 		{
 			id: 'upload-image',
 			label: 'Upload image',

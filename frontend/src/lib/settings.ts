@@ -13,6 +13,8 @@ export interface PartitionSettings {
 export interface AppSettings {
     customCss: string;
     mobileReadOnly: boolean;
+    /** Slug of the partition to open on app load. Empty = use the server's active one. */
+    defaultPartition: string;
     partitions: Record<string, PartitionSettings>;
 }
 
@@ -42,6 +44,7 @@ export const PARTITION_DEFAULTS: Required<PartitionSettings> = {
 export const DEFAULT: AppSettings = {
     customCss: '',
     mobileReadOnly: false,
+    defaultPartition: '',
     partitions: {},
 };
 
@@ -94,6 +97,7 @@ export function migrateSettings(raw: Record<string, unknown>, slugs: string[]): 
     return {
         customCss: (raw.customCss as string) ?? '',
         mobileReadOnly: (raw.mobileReadOnly as boolean) ?? false,
+        defaultPartition: (raw.defaultPartition as string) ?? '',
         partitions,
     };
 }

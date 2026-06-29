@@ -1,16 +1,18 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { DATE_FORMATS, PARTITION_DEFAULTS, type AppSettings } from './settings';
+	import type { PartitionInfo } from './api';
 
 	interface Props {
 		settings: AppSettings;
 		activePartitionSlug?: string;
 		activePartitionName?: string;
+		partitions?: PartitionInfo[];
 		onChange: () => void;
 		onRenamePartition?: (name: string) => Promise<void>;
 	}
 
-	let { settings = $bindable(), activePartitionSlug = '', activePartitionName = '', onChange, onRenamePartition }: Props = $props();
+	let { settings = $bindable(), activePartitionSlug = '', activePartitionName = '', partitions = [], onChange, onRenamePartition }: Props = $props();
 
 	let partitionNameDraft = $state(untrack(() => activePartitionName));
 	$effect(() => { partitionNameDraft = activePartitionName; });
@@ -103,6 +105,24 @@
 				{/each}
 			</select>
 		</div>
+		{#if partitions.length > 1}
+		<div class="setting-row">
+			<span class="setting-label">Default partition</span>
+			<select
+				class="select-input"
+				value={settings.defaultPartition ?? ''}
+				onchange={(e) => {
+					settings.defaultPartition = (e.target as HTMLSelectElement).value;
+					onChange();
+				}}
+			>
+				<option value="">Last used</option>
+				{#each partitions as p}
+					<option value={p.slug}>{p.name}</option>
+				{/each}
+			</select>
+		</div>
+		{/if}
 		<div class="setting-row">
 			<label class="setting-label" for="mobile-readonly">Read-only on mobile</label>
 			<input

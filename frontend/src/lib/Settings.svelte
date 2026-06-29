@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { applySettings, activePartitionSettings, DEFAULT, type AppSettings } from './settings';
-	import { putSettings } from './api';
+	import { putSettings, type PartitionInfo } from './api';
 	import { debounce } from './utils';
 	import SettingsGeneral from './SettingsGeneral.svelte';
 	import SettingsAppearance from './SettingsAppearance.svelte';
@@ -11,6 +11,7 @@
 	interface Props {
 		activePartitionSlug?: string;
 		activePartitionName?: string;
+		partitions?: PartitionInfo[];
 		onClose: () => void;
 		onLogout: () => void;
 		onSettingsChange?: (s: AppSettings) => void;
@@ -18,7 +19,7 @@
 		initialSettings?: AppSettings;
 	}
 
-	let { activePartitionSlug = '', activePartitionName = '', onClose, onLogout, onSettingsChange, onRenamePartition, initialSettings = DEFAULT }: Props = $props();
+	let { activePartitionSlug = '', activePartitionName = '', partitions = [], onClose, onLogout, onSettingsChange, onRenamePartition, initialSettings = DEFAULT }: Props = $props();
 
 	let settings = $state<AppSettings>({ ...untrack(() => initialSettings) });
 	const debouncedSave = debounce(() => putSettings(settings), 400);
@@ -63,7 +64,7 @@
 		</div>
 
 		<div class="modal-body">
-			<SettingsGeneral bind:settings {activePartitionSlug} {activePartitionName} {onChange} {onRenamePartition} />
+			<SettingsGeneral bind:settings {activePartitionSlug} {activePartitionName} {partitions} {onChange} {onRenamePartition} />
 			<SettingsAppearance bind:settings {activePartitionSlug} {activePartitionName} {onChange} {onReset} />
 			<SettingsSecurity />
 			<SettingsSync />
