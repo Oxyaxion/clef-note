@@ -335,6 +335,7 @@ enum Pred {
     Project(String, bool),         // substring (lowercase)
     LastModified(String, bool),    // starts_with
     Depth(usize, bool),            // exact slash count in name
+    Parent(String, bool),          // exact match on immediate parent folder name (lowercase)
 }
 
 impl Pred {
@@ -427,6 +428,13 @@ impl Pred {
             Pred::Depth(n, not) => {
                 let count = note.name.chars().filter(|&c| c == '/').count();
                 let m = count == *n;
+                if *not { !m } else { m }
+            }
+            Pred::Parent(pattern, not) => {
+                let m = match note.name.rfind('/') {
+                    Some(i) => note.name[..i].rsplit('/').next().unwrap_or("").to_lowercase() == pattern.as_str(),
+                    None => false,
+                };
                 if *not { !m } else { m }
             }
         }
@@ -637,6 +645,7 @@ fn parse_query(q: &str) -> ParsedQuery {
                     Ok(n)  => Pred::Depth(n, not),
                     Err(_) => continue,
                 },
+                "parent" => Pred::Parent(v.to_lowercase(), not),
                 "pinned" => match v {
                     "true"  => Pred::Pinned(!not),
                     "false" => Pred::Pinned(not),
@@ -1133,6 +1142,75 @@ mod tests {
         insert(&db, NoteRow { ..r("Deep/Sub/Note") });
 
         assert_eq!(sorted_names(&db, "depth:2"), vec!["Deep/Sub/Note"]);
+    }
+
+    // ── parent: filter ───────────────────────────────────────────────────────
+
+    #[test]
+    fn parent_direct_child_of_root_folder() {
+        let db = Db::new();
+        insert(&db, NoteRow { ..r("Home") });
+        insert(&db, NoteRow { ..r("RING/Frodo") });
+        insert(&db, NoteRow { ..r("RING/Gandalf") });
+        insert(&db, NoteRow { ..r("RING/Hobbits/Sam") });
+
+        assert_eq!(sorted_names(&db, "parent:RING"), vec!["RING/Frodo", "RING/Gandalf"]);
+    }
+
+    #[test]
+    fn parent_does_not_match_grandparent() {
+        // RING/Hobbits/Sam has parent "Hobbits", not "RING"
+        let db = Db::new();
+        insert(&db, NoteRow { ..r("RING/Frodo") });
+        insert(&db, NoteRow { ..r("RING/Hobbits/Sam") });
+        insert(&db, NoteRow { ..r("RING/Hobbits/Pippin") });
+
+        assert_eq!(sorted_names(&db, "parent:Hobbits"), vec!["RING/Hobbits/Pippin", "RING/Hobbits/Sam"]);
+        assert_eq!(sorted_names(&db, "parent:RING"),    vec!["RING/Frodo"]);
+    }
+
+    #[test]
+    fn parent_root_level_notes_never_match() {
+        let db = Db::new();
+        insert(&db, NoteRow { ..r("Home") });
+        insert(&db, NoteRow { ..r("About") });
+
+        assert_eq!(sorted_names(&db, "parent:Home"),  Vec::<&str>::new());
+        assert_eq!(sorted_names(&db, "parent:About"), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn parent_case_insensitive() {
+        let db = Db::new();
+        insert(&db, NoteRow { ..r("RING/Frodo") });
+        insert(&db, NoteRow { ..r("RING/Gandalf") });
+
+        assert_eq!(sorted_names(&db, "parent:ring"),   vec!["RING/Frodo", "RING/Gandalf"]);
+        assert_eq!(sorted_names(&db, "parent:RING"),   vec!["RING/Frodo", "RING/Gandalf"]);
+        assert_eq!(sorted_names(&db, "parent:Ring"),   vec!["RING/Frodo", "RING/Gandalf"]);
+    }
+
+    #[test]
+    fn parent_not_excludes_matching_notes() {
+        let db = Db::new();
+        insert(&db, NoteRow { ..r("RING/Frodo") });
+        insert(&db, NoteRow { ..r("RING/Gandalf") });
+        insert(&db, NoteRow { ..r("Shire/Bilbo") });
+        insert(&db, NoteRow { ..r("Home") });
+
+        assert_eq!(sorted_names(&db, "NOT parent:RING"), vec!["Home", "Shire/Bilbo"]);
+    }
+
+    #[test]
+    fn parent_same_name_at_different_depths() {
+        // Two folders share the name "Notes" at different depths; parent: matches both
+        let db = Db::new();
+        insert(&db, NoteRow { ..r("Notes/Alpha") });
+        insert(&db, NoteRow { ..r("Work/Notes/Beta") });
+        insert(&db, NoteRow { ..r("Work/Notes/Gamma") });
+        insert(&db, NoteRow { ..r("Work/Other/Delta") });
+
+        assert_eq!(sorted_names(&db, "parent:Notes"), vec!["Notes/Alpha", "Work/Notes/Beta", "Work/Notes/Gamma"]);
     }
 
     // ── Logic: AND (implicit), OR, NOT ───────────────────────────────────────

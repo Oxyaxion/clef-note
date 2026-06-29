@@ -68,6 +68,8 @@ lastModified: 2026-01-01
 
 > `depth:` counts the number of `/` in the note path. `depth:0` = root-level notes. Combined with `path:`, it restricts to direct children only: `path:Work/Projects/ depth:2` matches `Work/Projects/Alpha` but not `Work/Projects/Alpha/Tasks`. The depth of direct children = number of `/` in the folder prefix.
 
+> `parent:name` matches notes whose **immediate parent folder** is exactly `name` (case-insensitive). Unlike `depth:`, it is independent of absolute nesting level: `parent:RING` matches `RING/Frodo` and `World/RING/Frodo` equally, but not `RING/Hobbits/Sam` (whose parent is `Hobbits`). Root-level notes have no parent and never match.
+
 > `lastModified:` **vs** `recent:`: `lastModified:` filters by a specific date or period (`lastModified:2026-05` = all notes saved in May 2026). `recent:n` gives a relative ranking (the N most recent) with no date constraint — the two are complementary.
 
 > **Tag prefix**: `#prog` finds all notes whose tag starts with `prog` (`programming`, `progress`…).
@@ -85,6 +87,7 @@ lastModified: 2026-01-01
 | `path:value` | Full file path | Substring | `path:Work/Projects` |
 | `name:value` | Filename only (last segment) | Substring | `name:meeting` |
 | `depth:n` | Number of `/` in the path | Exact | `depth:0` `depth:3` |
+| `parent:name` | Immediate parent folder name | Exact (case-insensitive) | `parent:RING` |
 | `status:value` | Frontmatter `status` | Exact | `status:active` |
 | `type:value` | Frontmatter `type` | Exact | `type:note` `type:book` |
 | `area:value` | Frontmatter `area` | Substring | `area:pro` |
@@ -286,6 +289,12 @@ path:Work/Company/Finance/ depth:3 order by name
 ```
 
 ↳ Direct children of `Work/Company/Finance/` only (excludes sub-folders)
+
+```
+parent:RING order by name
+```
+
+↳ All notes directly inside any folder named `RING`, regardless of how deep `RING` itself is — excludes notes in sub-folders of `RING`
 
 ---
 
