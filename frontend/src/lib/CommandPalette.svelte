@@ -38,9 +38,10 @@
 		onPartitionSwitch?: (slug: string) => void;
 		onMoveNote?: (name: string, targetSlug: string) => void;
 		onMoveFolder?: (folder: string, targetSlug: string) => void;
+		onQuickNote: () => void;
 	}
 
-	let { notes, selected, noteMarkdown = '', rawView = false, currentTheme = 'default', partitions = [], onSelect, onClose, onNewNote, onRename, onDelete, onToggleRaw, onSetTheme, onSettings, onMediaLibrary, onShare, onPartitionSwitch, onMoveNote, onMoveFolder }: Props = $props();
+	let { notes, selected, noteMarkdown = '', rawView = false, currentTheme = 'default', partitions = [], onSelect, onClose, onNewNote, onRename, onDelete, onToggleRaw, onSetTheme, onSettings, onMediaLibrary, onShare, onPartitionSwitch, onMoveNote, onMoveFolder, onQuickNote }: Props = $props();
 
 	let query = $state('');
 	let selectedIndex = $state(0);
@@ -87,6 +88,13 @@
 			label: 'New note',
 			icon: '＋',
 			action: () => { onClose(); onNewNote(); },
+		},
+		{
+			id: 'quick-note',
+			label: 'New Quick Note',
+			hint: 'Ctrl+Shift+Q',
+			icon: '⚡',
+			action: () => { onClose(); onQuickNote(); },
 		},
 		// Themes — depend on currentTheme for the active indicator
 		...THEMES.map((t) => ({

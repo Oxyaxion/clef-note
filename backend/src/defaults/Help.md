@@ -361,6 +361,7 @@ locked:true order by lastModified    → locked notes, most recently saved first
 | Shortcut | Action |
 | --- | --- |
 | `Ctrl+K` | Command palette (search, export, theme…) |
+| `Ctrl+Shift+Q` | New Quick Note (creates `Quick-notes/YYYY-MM-DD-HH-mm`) |
 | `Ctrl+Shift+H` | Go to home page (set in Settings → General) |
 | `Ctrl+Shift+P` | Navigate back in history |
 | `Ctrl+Shift+N` | Navigate forward in history |

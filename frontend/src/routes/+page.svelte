@@ -252,6 +252,26 @@
 		focusEditorNonce++;
 	}
 
+	async function createQuickNote() {
+		const now = new Date();
+		const pad = (n: number) => String(n).padStart(2, '0');
+		const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+		const base = `Quick-notes/${date}-${pad(now.getHours())}-${pad(now.getMinutes())}`;
+		const name = notes.find(n => n.name === base)
+			? `${base}-${pad(now.getSeconds())}`
+			: base;
+		const content = `---\ntype: quick\ndate: ${date}\n---\n`;
+		try {
+			await saveNote(name, content);
+		} catch {
+			loadError = `Could not create quick note. The server may be unreachable.`;
+			return;
+		}
+		notes = [...notes, { name, pinned: false }];
+		await selectNote(name);
+		focusEditorNonce++;
+	}
+
 	function onEdit(markdown: string) {
 		if (!selected) return;
 		noteContent = markdown;
@@ -433,6 +453,7 @@
 			else if (e.code === 'KeyF') { e.preventDefault(); focusMode = !focusMode; }
 			else if (e.code === 'KeyM') { e.preventDefault(); toggleRawView(); }
 			else if (e.code === 'KeyC') { e.preventDefault(); creatingFromPalette = true; sidebarOpen = true; }
+			else if (e.code === 'KeyQ') { e.preventDefault(); createQuickNote(); }
 		}
 	}
 </script>
@@ -502,6 +523,7 @@
 		onPartitionSwitch={handlePartitionSwitch}
 		onMoveNote={handleMoveNote}
 		onMoveFolder={handleMoveFolder}
+		onQuickNote={createQuickNote}
 	/>
 {/if}
 
