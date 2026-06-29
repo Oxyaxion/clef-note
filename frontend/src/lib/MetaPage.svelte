@@ -182,6 +182,7 @@
 		{:else if activeTab === 'stubs'}
 			<MediaStubs
 				{stubs}
+				{notes}
 				maxBytes={stubsMaxBytes}
 				onMaxBytesChange={async (v) => { stubsMaxBytes = v; await reloadStubs(); }}
 				onNavigate={(name) => { onClose(); onNavigate(name); }}
