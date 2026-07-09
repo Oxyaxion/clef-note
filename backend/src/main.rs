@@ -58,19 +58,6 @@ async fn main() {
         return;
     }
 
-    if args.iter().any(|a| a == "--mcp") {
-        // MCP stdio mode: stdout is the JSON-RPC transport, redirect logs to stderr.
-        tracing_subscriber::fmt().with_writer(std::io::stderr).init();
-        let (state, _port) = setup_state().await;
-        let state = Arc::new(state);
-        let partition = {
-            let slug = state.active_partition.read().await.clone();
-            state.partitions.read().await[&slug].clone()
-        };
-        mcp::run(partition).await;
-        return;
-    }
-
     tracing_subscriber::fmt::init();
     let (state, port) = setup_state().await;
     let state = Arc::new(state);
@@ -298,6 +285,7 @@ async fn run_server(state: Arc<AppState>, port: u16) {
         .route("/api/key", get(key::get_keys))
         .route("/api/settings", get(settings::get_settings).put(settings::put_settings))
         .route("/api/openapi.json", get(openapi::get_spec))
+        .route("/mcp", post(mcp::handle))
         .route("/api/sync/status", get(get_sync_status))
         .route("/api/sync", post(trigger_sync))
         .route("/api/shares", get(shares::list_shares).post(shares::create_share))

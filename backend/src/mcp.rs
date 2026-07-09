@@ -1,79 +1,76 @@
-// MCP stdio server for clef-note.
+// MCP Streamable HTTP handler for clef-note.
 //
-// Implements the Model Context Protocol over stdin/stdout (one JSON-RPC 2.0
-// message per line). No extra dependencies — tokio + serde_json are already
-// in the tree.
+// Protocol: JSON-RPC 2.0 over HTTP POST (spec 2025-03-26).
+// Route:    POST /mcp  — protected by the existing bearer-token middleware.
 //
-// Spec: https://spec.modelcontextprotocol.io/specification/
+// Claude.ai / Gemini / Cursor connect by pointing their MCP integration at:
+//   https://<your-domain>/mcp   (Authorization: Bearer <api_key>)
 //
-// Start with:  clef-note --mcp
-//
-// Exposed tools:
+// Tools:
 //   list_notes   — enumerate all notes in the active partition
 //   get_note     — read a note's full Markdown (including frontmatter)
-//   write_note   — create or overwrite a note
-//   search_notes — full-text search
+//   write_note   — create or overwrite a note (stamps lastModified)
+//   search_notes — full-text search returning snippets
 //   query_notes  — DSL filter (#tag, status:, area:, recent:N, …)
 
 use std::sync::Arc;
 
+use axum::{
+    extract::State,
+    http::{StatusCode, header},
+    response::{IntoResponse, Response},
+};
 use serde_json::{Value, json};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
-use crate::partitions::PartitionState;
+use crate::{AppState, partitions::{ActivePartition, PartitionState}};
 
-pub async fn run(partition: Arc<PartitionState>) {
-    let mut lines = BufReader::new(tokio::io::stdin()).lines();
-    let mut out = tokio::io::stdout();
+/// `POST /mcp` — entry point wired into the Axum router.
+pub async fn handle(
+    State(_state): State<Arc<AppState>>,
+    ActivePartition(vault): ActivePartition,
+    body: String,
+) -> Response {
+    let msg: Value = match serde_json::from_str(&body) {
+        Ok(v) => v,
+        Err(e) => return json_resp(json!({
+            "jsonrpc": "2.0",
+            "error": { "code": -32700, "message": format!("parse error: {e}") },
+            "id": null
+        })),
+    };
 
-    while let Ok(Some(line)) = lines.next_line().await {
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-
-        let msg: Value = match serde_json::from_str(line) {
-            Ok(v) => v,
-            Err(e) => {
-                send_error(&mut out, Value::Null, -32700, &format!("parse error: {e}")).await;
-                continue;
+    // Batch request (array of messages).
+    if let Some(msgs) = msg.as_array() {
+        let mut out = Vec::new();
+        for m in msgs {
+            if m.get("id").is_some() {
+                out.push(respond(&vault, m).await);
             }
-        };
+        }
+        return json_resp(json!(out));
+    }
 
-        // Notifications have no "id" field — no response expected.
-        let Some(id) = msg.get("id").cloned() else {
-            continue;
-        };
+    // Notification (no "id") → 202, no body.
+    if msg.get("id").is_none() {
+        return StatusCode::ACCEPTED.into_response();
+    }
 
-        let method = msg["method"].as_str().unwrap_or("");
-        let params = msg.get("params");
+    json_resp(respond(&vault, &msg).await)
+}
 
-        let response = match dispatch(&partition, method, params).await {
-            Ok(result) => json!({"jsonrpc":"2.0","result":result,"id":id}),
-            Err(msg) => json!({
-                "jsonrpc": "2.0",
-                "error": { "code": -32000, "message": msg },
-                "id": id
-            }),
-        };
+async fn respond(vault: &Arc<PartitionState>, msg: &Value) -> Value {
+    let id = msg["id"].clone();
+    let method = msg["method"].as_str().unwrap_or("");
+    let params = msg.get("params");
 
-        let mut bytes = serde_json::to_vec(&response).unwrap_or_default();
-        bytes.push(b'\n');
-        out.write_all(&bytes).await.ok();
-        out.flush().await.ok();
+    match dispatch(vault, method, params).await {
+        Ok(result) => json!({"jsonrpc":"2.0","result":result,"id":id}),
+        Err(err)   => json!({"jsonrpc":"2.0","error":{"code":-32000,"message":err},"id":id}),
     }
 }
 
-async fn send_error(out: &mut tokio::io::Stdout, id: Value, code: i32, msg: &str) {
-    let r = json!({"jsonrpc":"2.0","error":{"code":code,"message":msg},"id":id});
-    let mut bytes = serde_json::to_vec(&r).unwrap_or_default();
-    bytes.push(b'\n');
-    out.write_all(&bytes).await.ok();
-    out.flush().await.ok();
-}
-
 async fn dispatch(
-    partition: &Arc<PartitionState>,
+    vault: &Arc<PartitionState>,
     method: &str,
     params: Option<&Value>,
 ) -> Result<Value, String> {
@@ -93,7 +90,7 @@ async fn dispatch(
             let p = params.ok_or("missing params")?;
             let name = p["name"].as_str().ok_or("missing tool name")?;
             let args = p.get("arguments").unwrap_or(&Value::Null);
-            call_tool(partition, name, args).await
+            call_tool(vault, name, args).await
         }
 
         "ping" => Ok(json!({})),
@@ -107,10 +104,7 @@ fn tool_schemas() -> Value {
         {
             "name": "list_notes",
             "description": "List all note names in the active vault.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {}
-            }
+            "inputSchema": { "type": "object", "properties": {} }
         },
         {
             "name": "get_note",
@@ -120,7 +114,7 @@ fn tool_schemas() -> Value {
                 "properties": {
                     "name": {
                         "type": "string",
-                        "description": "Note path without .md (e.g. 'LLM/Intro' or 'Projects/Alpha')"
+                        "description": "Note path without .md extension (e.g. 'LLM/Intro' or 'Projects/Alpha')"
                     }
                 },
                 "required": ["name"]
@@ -134,7 +128,7 @@ fn tool_schemas() -> Value {
                 "properties": {
                     "name": {
                         "type": "string",
-                        "description": "Note path without .md"
+                        "description": "Note path without .md extension"
                     },
                     "content": {
                         "type": "string",
@@ -146,27 +140,24 @@ fn tool_schemas() -> Value {
         },
         {
             "name": "search_notes",
-            "description": "Full-text search across all note titles and bodies. Returns matching note names with context snippets.",
+            "description": "Full-text search across all note titles and bodies. Returns note names with context snippets.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "Search terms"
-                    }
+                    "query": { "type": "string", "description": "Search terms" }
                 },
                 "required": ["query"]
             }
         },
         {
             "name": "query_notes",
-            "description": "Filter notes with the vault DSL. Filters: #tag, tag:, title:, status:, area:, author:, date:, due:, pinned:, locked:, project:, priority:. Logic: implicit AND, OR, NOT. Limiters: recent:N, oldest:N. Sort: 'order by <field> [asc|desc]'. Examples: '#rust status:active', 'area:work order by date desc', 'recent:10 NOT #archive'.",
+            "description": "Filter notes with the vault DSL. Filters: #tag, tag:, title:, status:, area:, author:, date:, due:, pinned:, locked:, project:, priority:. Logic: implicit AND, OR, NOT. Limiters: recent:N, oldest:N. Sort: 'order by <field> [asc|desc]'.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "DSL expression"
+                        "description": "DSL expression, e.g. '#rust status:active' or 'area:work order by date desc'"
                     }
                 },
                 "required": ["query"]
@@ -175,30 +166,22 @@ fn tool_schemas() -> Value {
     ])
 }
 
-async fn call_tool(
-    partition: &Arc<PartitionState>,
-    name: &str,
-    args: &Value,
-) -> Result<Value, String> {
+async fn call_tool(vault: &Arc<PartitionState>, name: &str, args: &Value) -> Result<Value, String> {
     match name {
         "list_notes" => {
-            let db = partition.db.clone();
+            let db = vault.db.clone();
             let mut notes = tokio::task::spawn_blocking(move || db.list_all_meta())
                 .await
                 .map_err(|e| e.to_string())?;
             notes.sort_by(|a, b| a.name.cmp(&b.name));
-            let text = notes
-                .iter()
-                .map(|n| n.name.as_str())
-                .collect::<Vec<_>>()
-                .join("\n");
+            let text = notes.iter().map(|n| n.name.as_str()).collect::<Vec<_>>().join("\n");
             text_ok(if text.is_empty() { "(vault is empty)" } else { &text })
         }
 
         "get_note" => {
             let note_name = str_arg(args, "name")?;
             check_safe(&note_name)?;
-            let path = partition.storage_path.join(format!("{note_name}.md"));
+            let path = vault.storage_path.join(format!("{note_name}.md"));
             let content = tokio::fs::read_to_string(&path)
                 .await
                 .map_err(|_| format!("note not found: {note_name}"))?;
@@ -207,20 +190,16 @@ async fn call_tool(
 
         "write_note" => {
             let note_name = str_arg(args, "name")?;
-            let content = str_arg(args, "content")?;
+            let content   = str_arg(args, "content")?;
             check_safe(&note_name)?;
 
-            let path = partition.storage_path.join(format!("{note_name}.md"));
+            let path = vault.storage_path.join(format!("{note_name}.md"));
             if let Some(parent) = path.parent() {
-                tokio::fs::create_dir_all(parent)
-                    .await
-                    .map_err(|e| e.to_string())?;
+                tokio::fs::create_dir_all(parent).await.map_err(|e| e.to_string())?;
             }
 
             let stamped = crate::frontmatter::stamp_last_modified(&content);
-            tokio::fs::write(&path, &stamped)
-                .await
-                .map_err(|e| e.to_string())?;
+            tokio::fs::write(&path, &stamped).await.map_err(|e| e.to_string())?;
 
             let mtime = tokio::fs::metadata(&path)
                 .await
@@ -231,32 +210,24 @@ async fn call_tool(
                 .unwrap_or(0);
 
             let parsed = crate::frontmatter::parse_note(&stamped);
-            let db = partition.db.clone();
+            let db = vault.db.clone();
             let n = note_name.clone();
-            tokio::task::spawn_blocking(move || db.upsert(&n, &parsed, mtime))
-                .await
-                .ok();
-
-            partition
-                .backlink_index
-                .write()
-                .await
-                .update_note(&note_name, &stamped);
+            tokio::task::spawn_blocking(move || db.upsert(&n, &parsed, mtime)).await.ok();
+            vault.backlink_index.write().await.update_note(&note_name, &stamped);
 
             text_ok(&format!("Saved '{note_name}'."))
         }
 
         "search_notes" => {
             let query = str_arg(args, "query")?;
-            let db = partition.db.clone();
+            let db = vault.db.clone();
             let results = tokio::task::spawn_blocking(move || db.search(&query))
                 .await
                 .map_err(|e| e.to_string())?;
             let text = if results.is_empty() {
                 "No results.".to_string()
             } else {
-                results
-                    .iter()
+                results.iter()
                     .map(|r| format!("[{}] {}", r.name, r.snippet))
                     .collect::<Vec<_>>()
                     .join("\n")
@@ -266,7 +237,7 @@ async fn call_tool(
 
         "query_notes" => {
             let query = str_arg(args, "query")?;
-            let db = partition.db.clone();
+            let db = vault.db.clone();
             let results = tokio::task::spawn_blocking(move || db.query_notes(&query))
                 .await
                 .map_err(|e| e.to_string())?;
@@ -297,9 +268,15 @@ fn check_safe(name: &str) -> Result<(), String> {
 }
 
 fn text_ok(text: &str) -> Result<Value, String> {
-    Ok(json!({
-        "content": [{ "type": "text", "text": text }]
-    }))
+    Ok(json!({ "content": [{ "type": "text", "text": text }] }))
+}
+
+fn json_resp(body: Value) -> Response {
+    (
+        [(header::CONTENT_TYPE, "application/json")],
+        serde_json::to_string(&body).unwrap_or_default(),
+    )
+        .into_response()
 }
 
 #[cfg(test)]
@@ -324,95 +301,90 @@ mod tests {
     async fn initialize_returns_protocol_version() {
         let dir = tempfile::tempdir().unwrap();
         let p = make_partition(dir.path());
-        let result = dispatch(&p, "initialize", None).await.unwrap();
-        assert_eq!(result["protocolVersion"], "2024-11-05");
-        assert!(result["capabilities"]["tools"].is_object());
+        let r = dispatch(&p, "initialize", None).await.unwrap();
+        assert_eq!(r["protocolVersion"], "2024-11-05");
+        assert!(r["capabilities"]["tools"].is_object());
     }
 
     #[tokio::test]
-    async fn tools_list_contains_all_tools() {
+    async fn tools_list_has_all_tools() {
         let dir = tempfile::tempdir().unwrap();
         let p = make_partition(dir.path());
-        let result = dispatch(&p, "tools/list", None).await.unwrap();
-        let tools: Vec<&str> = result["tools"]
+        let r = dispatch(&p, "tools/list", None).await.unwrap();
+        let names: Vec<&str> = r["tools"]
             .as_array()
             .unwrap()
             .iter()
             .filter_map(|t| t["name"].as_str())
             .collect();
-        assert!(tools.contains(&"list_notes"));
-        assert!(tools.contains(&"get_note"));
-        assert!(tools.contains(&"write_note"));
-        assert!(tools.contains(&"search_notes"));
-        assert!(tools.contains(&"query_notes"));
+        for expected in ["list_notes", "get_note", "write_note", "search_notes", "query_notes"] {
+            assert!(names.contains(&expected), "missing tool: {expected}");
+        }
     }
 
     #[tokio::test]
-    async fn write_then_get_note() {
+    async fn write_then_get_roundtrip() {
         let dir = tempfile::tempdir().unwrap();
         let p = make_partition(dir.path());
 
-        let write_args = json!({ "name": "LLM/Test", "content": "# Hello\nworld" });
-        let r = call_tool(&p, "write_note", &write_args).await.unwrap();
-        assert!(r["content"][0]["text"].as_str().unwrap().contains("Saved"));
+        let w = call_tool(&p, "write_note", &json!({"name":"LLM/Test","content":"# Hello\nworld"}))
+            .await
+            .unwrap();
+        assert!(w["content"][0]["text"].as_str().unwrap().contains("Saved"));
 
-        let get_args = json!({ "name": "LLM/Test" });
-        let r = call_tool(&p, "get_note", &get_args).await.unwrap();
-        let text = r["content"][0]["text"].as_str().unwrap();
-        assert!(text.contains("# Hello"));
-        assert!(text.contains("world"));
+        let g = call_tool(&p, "get_note", &json!({"name":"LLM/Test"})).await.unwrap();
+        let text = g["content"][0]["text"].as_str().unwrap();
+        assert!(text.contains("# Hello") && text.contains("world"));
     }
 
     #[tokio::test]
-    async fn list_notes_after_write() {
+    async fn list_notes_reflects_writes() {
         let dir = tempfile::tempdir().unwrap();
         let p = make_partition(dir.path());
 
-        call_tool(&p, "write_note", &json!({"name":"A","content":"alpha"}))
-            .await
-            .unwrap();
-        call_tool(&p, "write_note", &json!({"name":"B","content":"beta"}))
-            .await
-            .unwrap();
+        call_tool(&p, "write_note", &json!({"name":"A","content":"alpha"})).await.unwrap();
+        call_tool(&p, "write_note", &json!({"name":"B","content":"beta"})).await.unwrap();
 
-        // Re-index: upsert via write_note updates db, but list_notes reads db.
-        // Manually upsert since the test partition starts empty.
         let r = call_tool(&p, "list_notes", &json!({})).await.unwrap();
         let text = r["content"][0]["text"].as_str().unwrap();
-        assert!(text.contains('A') || text.contains("vault is empty"));
+        assert!(text.contains('A') && text.contains('B'));
     }
 
     #[tokio::test]
     async fn get_note_not_found() {
         let dir = tempfile::tempdir().unwrap();
         let p = make_partition(dir.path());
-        let r = call_tool(&p, "get_note", &json!({"name":"Missing"})).await;
-        assert!(r.is_err());
-        assert!(r.unwrap_err().contains("not found"));
+        let e = call_tool(&p, "get_note", &json!({"name":"Missing"})).await.unwrap_err();
+        assert!(e.contains("not found"));
     }
 
     #[tokio::test]
     async fn rejects_path_traversal() {
         let dir = tempfile::tempdir().unwrap();
         let p = make_partition(dir.path());
-        let r = call_tool(&p, "get_note", &json!({"name":"../secret"})).await;
-        assert!(r.is_err());
-        assert!(r.unwrap_err().contains("invalid"));
+        let e = call_tool(&p, "get_note", &json!({"name":"../secret"})).await.unwrap_err();
+        assert!(e.contains("invalid"));
     }
 
     #[tokio::test]
-    async fn unknown_method_returns_error() {
+    async fn unknown_method_errors() {
         let dir = tempfile::tempdir().unwrap();
         let p = make_partition(dir.path());
-        let r = dispatch(&p, "nonexistent/method", None).await;
-        assert!(r.is_err());
+        assert!(dispatch(&p, "nonexistent", None).await.is_err());
     }
 
     #[tokio::test]
-    async fn ping_returns_empty_object() {
+    async fn ping() {
         let dir = tempfile::tempdir().unwrap();
         let p = make_partition(dir.path());
-        let r = dispatch(&p, "ping", None).await.unwrap();
-        assert_eq!(r, json!({}));
+        assert_eq!(dispatch(&p, "ping", None).await.unwrap(), json!({}));
+    }
+
+    #[tokio::test]
+    async fn search_notes_no_results() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = make_partition(dir.path());
+        let r = call_tool(&p, "search_notes", &json!({"query":"zzznomatch"})).await.unwrap();
+        assert!(r["content"][0]["text"].as_str().unwrap().contains("No results"));
     }
 }
