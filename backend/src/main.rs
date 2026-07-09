@@ -7,6 +7,7 @@ mod folders;
 mod frontend;
 mod frontmatter;
 mod key;
+mod mcp;
 mod move_notes;
 mod notes;
 mod oidc;
@@ -54,6 +55,19 @@ async fn main() {
             Some(pwd) => { println!("{}", auth::hash_password(pwd)); }
             None => { eprintln!("usage: clef-note --hash-password \"yourpassword\""); }
         }
+        return;
+    }
+
+    if args.iter().any(|a| a == "--mcp") {
+        // MCP stdio mode: stdout is the JSON-RPC transport, redirect logs to stderr.
+        tracing_subscriber::fmt().with_writer(std::io::stderr).init();
+        let (state, _port) = setup_state().await;
+        let state = Arc::new(state);
+        let partition = {
+            let slug = state.active_partition.read().await.clone();
+            state.partitions.read().await[&slug].clone()
+        };
+        mcp::run(partition).await;
         return;
     }
 
