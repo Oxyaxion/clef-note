@@ -7,11 +7,19 @@
 //   https://<your-domain>/mcp   (Authorization: Bearer <api_key>)
 //
 // Tools:
-//   list_notes   — enumerate all notes in the active partition
-//   get_note     — read a note's full Markdown (including frontmatter)
-//   write_note   — create or overwrite a note (stamps lastModified)
-//   search_notes — full-text search returning snippets
-//   query_notes  — DSL filter (#tag, status:, area:, recent:N, …)
+//   list_partitions — enumerate partitions and which one is active
+//   list_notes      — enumerate all notes in a partition
+//   get_note        — read a note's full Markdown (including frontmatter)
+//   write_note      — create or overwrite a note (stamps lastModified)
+//   search_notes    — full-text search returning snippets
+//   query_notes     — DSL filter (#tag, status:, area:, recent:N, …)
+//
+// All tools except list_partitions accept an optional "partition" argument
+// (slug). When omitted, the server's currently active partition is used —
+// the same one the web UI's partition switcher controls. That default is
+// process-wide mutable state shared with the web UI, so relying on it is a
+// race if someone switches partitions concurrently; pass an explicit slug
+// for anything beyond a one-off read.
 
 use std::sync::Arc;
 
@@ -22,14 +30,10 @@ use axum::{
 };
 use serde_json::{Value, json};
 
-use crate::{AppState, partitions::{ActivePartition, PartitionState}};
+use crate::{AppState, partitions::PartitionState};
 
 /// `POST /mcp` — entry point wired into the Axum router.
-pub async fn handle(
-    State(_state): State<Arc<AppState>>,
-    ActivePartition(vault): ActivePartition,
-    body: String,
-) -> Response {
+pub async fn handle(State(state): State<Arc<AppState>>, body: String) -> Response {
     let msg: Value = match serde_json::from_str(&body) {
         Ok(v) => v,
         Err(e) => return json_resp(json!({
@@ -44,7 +48,7 @@ pub async fn handle(
         let mut out = Vec::new();
         for m in msgs {
             if m.get("id").is_some() {
-                out.push(respond(&vault, m).await);
+                out.push(respond(&state, m).await);
             }
         }
         return json_resp(json!(out));
@@ -55,22 +59,22 @@ pub async fn handle(
         return StatusCode::ACCEPTED.into_response();
     }
 
-    json_resp(respond(&vault, &msg).await)
+    json_resp(respond(&state, &msg).await)
 }
 
-async fn respond(vault: &Arc<PartitionState>, msg: &Value) -> Value {
+async fn respond(state: &Arc<AppState>, msg: &Value) -> Value {
     let id = msg["id"].clone();
     let method = msg["method"].as_str().unwrap_or("");
     let params = msg.get("params");
 
-    match dispatch(vault, method, params).await {
+    match dispatch(state, method, params).await {
         Ok(result) => json!({"jsonrpc":"2.0","result":result,"id":id}),
         Err(err)   => json!({"jsonrpc":"2.0","error":{"code":-32000,"message":err},"id":id}),
     }
 }
 
 async fn dispatch(
-    vault: &Arc<PartitionState>,
+    state: &Arc<AppState>,
     method: &str,
     params: Option<&Value>,
 ) -> Result<Value, String> {
@@ -90,7 +94,7 @@ async fn dispatch(
             let p = params.ok_or("missing params")?;
             let name = p["name"].as_str().ok_or("missing tool name")?;
             let args = p.get("arguments").unwrap_or(&Value::Null);
-            call_tool(vault, name, args).await
+            call_tool(state, name, args).await
         }
 
         "ping" => Ok(json!({})),
@@ -99,12 +103,24 @@ async fn dispatch(
     }
 }
 
+const PARTITION_ARG_DESC: &str = "Partition slug to operate on (see list_partitions). Defaults to the server's currently active partition if omitted.";
+
 fn tool_schemas() -> Value {
     json!([
         {
-            "name": "list_notes",
-            "description": "List all note names in the active vault.",
+            "name": "list_partitions",
+            "description": "List all partitions (vaults) and mark which one is currently active on the server.",
             "inputSchema": { "type": "object", "properties": {} }
+        },
+        {
+            "name": "list_notes",
+            "description": "List all note names in a partition.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "partition": { "type": "string", "description": PARTITION_ARG_DESC }
+                }
+            }
         },
         {
             "name": "get_note",
@@ -115,7 +131,8 @@ fn tool_schemas() -> Value {
                     "name": {
                         "type": "string",
                         "description": "Note path without .md extension (e.g. 'LLM/Intro' or 'Projects/Alpha')"
-                    }
+                    },
+                    "partition": { "type": "string", "description": PARTITION_ARG_DESC }
                 },
                 "required": ["name"]
             }
@@ -133,7 +150,8 @@ fn tool_schemas() -> Value {
                     "content": {
                         "type": "string",
                         "description": "Full Markdown content (optional YAML frontmatter block at the top)"
-                    }
+                    },
+                    "partition": { "type": "string", "description": PARTITION_ARG_DESC }
                 },
                 "required": ["name", "content"]
             }
@@ -144,7 +162,8 @@ fn tool_schemas() -> Value {
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "query": { "type": "string", "description": "Search terms" }
+                    "query": { "type": "string", "description": "Search terms" },
+                    "partition": { "type": "string", "description": PARTITION_ARG_DESC }
                 },
                 "required": ["query"]
             }
@@ -158,7 +177,8 @@ fn tool_schemas() -> Value {
                     "query": {
                         "type": "string",
                         "description": "DSL expression, e.g. '#rust status:active' or 'area:work order by date desc'"
-                    }
+                    },
+                    "partition": { "type": "string", "description": PARTITION_ARG_DESC }
                 },
                 "required": ["query"]
             }
@@ -166,7 +186,34 @@ fn tool_schemas() -> Value {
     ])
 }
 
-async fn call_tool(vault: &Arc<PartitionState>, name: &str, args: &Value) -> Result<Value, String> {
+/// Resolves the partition named by args["partition"], falling back to the
+/// server's currently active partition when the argument is absent.
+async fn resolve_partition(state: &Arc<AppState>, args: &Value) -> Result<Arc<PartitionState>, String> {
+    let slug = match args.get("partition").and_then(Value::as_str) {
+        Some(s) => s.to_string(),
+        None => state.active_partition.read().await.clone(),
+    };
+    state.partitions.read().await
+        .get(&slug)
+        .cloned()
+        .ok_or_else(|| format!("unknown partition: {slug}"))
+}
+
+async fn call_tool(state: &Arc<AppState>, name: &str, args: &Value) -> Result<Value, String> {
+    if name == "list_partitions" {
+        let active = state.active_partition.read().await.clone();
+        let partitions = state.partitions.read().await;
+        let mut infos: Vec<Value> = partitions.values().map(|p| json!({
+            "slug": p.slug,
+            "name": p.name.read().unwrap().clone(),
+            "active": p.slug == active,
+        })).collect();
+        infos.sort_by(|a, b| a["slug"].as_str().cmp(&b["slug"].as_str()));
+        return Ok(json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&infos).unwrap_or_default() }] }));
+    }
+
+    let vault = resolve_partition(state, args).await?;
+
     match name {
         "list_notes" => {
             let db = vault.db.clone();
@@ -215,7 +262,7 @@ async fn call_tool(vault: &Arc<PartitionState>, name: &str, args: &Value) -> Res
             tokio::task::spawn_blocking(move || db.upsert(&n, &parsed, mtime)).await.ok();
             vault.backlink_index.write().await.update_note(&note_name, &stamped);
 
-            text_ok(&format!("Saved '{note_name}'."))
+            text_ok(&format!("Saved '{note_name}' in partition '{}'.", vault.slug))
         }
 
         "search_notes" => {
@@ -283,25 +330,39 @@ fn json_resp(body: Value) -> Response {
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::collections::HashMap;
 
-    fn make_partition(dir: &std::path::Path) -> Arc<PartitionState> {
-        use crate::{backlinks::BacklinkIndex, db::Db, sync};
-        Arc::new(PartitionState {
-            slug: "test".into(),
-            name: std::sync::RwLock::new("Test".into()),
-            storage_path: dir.to_path_buf(),
-            db: Arc::new(Db::new()),
-            backlink_index: tokio::sync::RwLock::new(BacklinkIndex::default()),
-            sync_config: None,
-            sync_status: sync::new_status(false),
+    async fn make_state(dir: &std::path::Path) -> Arc<AppState> {
+        make_state_with_slug(dir, "test").await
+    }
+
+    async fn make_state_with_slug(dir: &std::path::Path, slug: &str) -> Arc<AppState> {
+        let partition = crate::partitions::init(
+            slug.to_string(),
+            "Test".to_string(),
+            dir.to_path_buf(),
+            None,
+        ).await;
+        let mut map = HashMap::new();
+        map.insert(slug.to_string(), Arc::new(partition));
+
+        Arc::new(AppState {
+            root_path: dir.to_path_buf(),
+            partitions: tokio::sync::RwLock::new(map),
+            active_partition: tokio::sync::RwLock::new(slug.to_string()),
+            password_hash: String::new(),
+            sessions: crate::session::SessionStore::new(),
+            api_key: None,
+            login_guard: crate::auth::LoginGuard::new(),
+            oidc_client: None,
         })
     }
 
     #[tokio::test]
     async fn initialize_returns_protocol_version() {
         let dir = tempfile::tempdir().unwrap();
-        let p = make_partition(dir.path());
-        let r = dispatch(&p, "initialize", None).await.unwrap();
+        let s = make_state(dir.path()).await;
+        let r = dispatch(&s, "initialize", None).await.unwrap();
         assert_eq!(r["protocolVersion"], "2024-11-05");
         assert!(r["capabilities"]["tools"].is_object());
     }
@@ -309,15 +370,15 @@ mod tests {
     #[tokio::test]
     async fn tools_list_has_all_tools() {
         let dir = tempfile::tempdir().unwrap();
-        let p = make_partition(dir.path());
-        let r = dispatch(&p, "tools/list", None).await.unwrap();
+        let s = make_state(dir.path()).await;
+        let r = dispatch(&s, "tools/list", None).await.unwrap();
         let names: Vec<&str> = r["tools"]
             .as_array()
             .unwrap()
             .iter()
             .filter_map(|t| t["name"].as_str())
             .collect();
-        for expected in ["list_notes", "get_note", "write_note", "search_notes", "query_notes"] {
+        for expected in ["list_partitions", "list_notes", "get_note", "write_note", "search_notes", "query_notes"] {
             assert!(names.contains(&expected), "missing tool: {expected}");
         }
     }
@@ -325,14 +386,14 @@ mod tests {
     #[tokio::test]
     async fn write_then_get_roundtrip() {
         let dir = tempfile::tempdir().unwrap();
-        let p = make_partition(dir.path());
+        let s = make_state(dir.path()).await;
 
-        let w = call_tool(&p, "write_note", &json!({"name":"LLM/Test","content":"# Hello\nworld"}))
+        let w = call_tool(&s, "write_note", &json!({"name":"LLM/Test","content":"# Hello\nworld"}))
             .await
             .unwrap();
         assert!(w["content"][0]["text"].as_str().unwrap().contains("Saved"));
 
-        let g = call_tool(&p, "get_note", &json!({"name":"LLM/Test"})).await.unwrap();
+        let g = call_tool(&s, "get_note", &json!({"name":"LLM/Test"})).await.unwrap();
         let text = g["content"][0]["text"].as_str().unwrap();
         assert!(text.contains("# Hello") && text.contains("world"));
     }
@@ -340,12 +401,12 @@ mod tests {
     #[tokio::test]
     async fn list_notes_reflects_writes() {
         let dir = tempfile::tempdir().unwrap();
-        let p = make_partition(dir.path());
+        let s = make_state(dir.path()).await;
 
-        call_tool(&p, "write_note", &json!({"name":"A","content":"alpha"})).await.unwrap();
-        call_tool(&p, "write_note", &json!({"name":"B","content":"beta"})).await.unwrap();
+        call_tool(&s, "write_note", &json!({"name":"A","content":"alpha"})).await.unwrap();
+        call_tool(&s, "write_note", &json!({"name":"B","content":"beta"})).await.unwrap();
 
-        let r = call_tool(&p, "list_notes", &json!({})).await.unwrap();
+        let r = call_tool(&s, "list_notes", &json!({})).await.unwrap();
         let text = r["content"][0]["text"].as_str().unwrap();
         assert!(text.contains('A') && text.contains('B'));
     }
@@ -353,38 +414,91 @@ mod tests {
     #[tokio::test]
     async fn get_note_not_found() {
         let dir = tempfile::tempdir().unwrap();
-        let p = make_partition(dir.path());
-        let e = call_tool(&p, "get_note", &json!({"name":"Missing"})).await.unwrap_err();
+        let s = make_state(dir.path()).await;
+        let e = call_tool(&s, "get_note", &json!({"name":"Missing"})).await.unwrap_err();
         assert!(e.contains("not found"));
     }
 
     #[tokio::test]
     async fn rejects_path_traversal() {
         let dir = tempfile::tempdir().unwrap();
-        let p = make_partition(dir.path());
-        let e = call_tool(&p, "get_note", &json!({"name":"../secret"})).await.unwrap_err();
+        let s = make_state(dir.path()).await;
+        let e = call_tool(&s, "get_note", &json!({"name":"../secret"})).await.unwrap_err();
         assert!(e.contains("invalid"));
     }
 
     #[tokio::test]
     async fn unknown_method_errors() {
         let dir = tempfile::tempdir().unwrap();
-        let p = make_partition(dir.path());
-        assert!(dispatch(&p, "nonexistent", None).await.is_err());
+        let s = make_state(dir.path()).await;
+        assert!(dispatch(&s, "nonexistent", None).await.is_err());
     }
 
     #[tokio::test]
     async fn ping() {
         let dir = tempfile::tempdir().unwrap();
-        let p = make_partition(dir.path());
-        assert_eq!(dispatch(&p, "ping", None).await.unwrap(), json!({}));
+        let s = make_state(dir.path()).await;
+        assert_eq!(dispatch(&s, "ping", None).await.unwrap(), json!({}));
     }
 
     #[tokio::test]
     async fn search_notes_no_results() {
         let dir = tempfile::tempdir().unwrap();
-        let p = make_partition(dir.path());
-        let r = call_tool(&p, "search_notes", &json!({"query":"zzznomatch"})).await.unwrap();
+        let s = make_state(dir.path()).await;
+        let r = call_tool(&s, "search_notes", &json!({"query":"zzznomatch"})).await.unwrap();
         assert!(r["content"][0]["text"].as_str().unwrap().contains("No results"));
+    }
+
+    #[tokio::test]
+    async fn list_partitions_marks_active() {
+        let dir = tempfile::tempdir().unwrap();
+        let s = make_state_with_slug(dir.path(), "notes").await;
+        let r = call_tool(&s, "list_partitions", &json!({})).await.unwrap();
+        let text = r["content"][0]["text"].as_str().unwrap();
+        let parsed: Value = serde_json::from_str(text).unwrap();
+        assert_eq!(parsed[0]["slug"], "notes");
+        assert_eq!(parsed[0]["active"], true);
+    }
+
+    #[tokio::test]
+    async fn unknown_partition_arg_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let s = make_state(dir.path()).await;
+        let e = call_tool(&s, "list_notes", &json!({"partition": "nope"})).await.unwrap_err();
+        assert!(e.contains("unknown partition"));
+    }
+
+    #[tokio::test]
+    async fn explicit_partition_overrides_active() {
+        let root = tempfile::tempdir().unwrap();
+        let a_dir = root.path().join("a");
+        let b_dir = root.path().join("b");
+        tokio::fs::create_dir_all(&a_dir).await.unwrap();
+        tokio::fs::create_dir_all(&b_dir).await.unwrap();
+
+        let pa = crate::partitions::init("a".into(), "A".into(), a_dir, None).await;
+        let pb = crate::partitions::init("b".into(), "B".into(), b_dir, None).await;
+        let mut map = HashMap::new();
+        map.insert("a".to_string(), Arc::new(pa));
+        map.insert("b".to_string(), Arc::new(pb));
+
+        let s = Arc::new(AppState {
+            root_path: root.path().to_path_buf(),
+            partitions: tokio::sync::RwLock::new(map),
+            active_partition: tokio::sync::RwLock::new("a".to_string()),
+            password_hash: String::new(),
+            sessions: crate::session::SessionStore::new(),
+            api_key: None,
+            login_guard: crate::auth::LoginGuard::new(),
+            oidc_client: None,
+        });
+
+        call_tool(&s, "write_note", &json!({"name":"OnlyInB","content":"x","partition":"b"})).await.unwrap();
+
+        let default_list = call_tool(&s, "list_notes", &json!({})).await.unwrap();
+        assert!(!default_list["content"][0]["text"].as_str().unwrap().contains("OnlyInB"));
+
+        let b_list = call_tool(&s, "list_notes", &json!({"partition":"b"})).await.unwrap();
+        assert!(b_list["content"][0]["text"].as_str().unwrap().contains("OnlyInB"));
     }
 }
