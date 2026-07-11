@@ -19,6 +19,7 @@
 - Read-only mode.
 - API to query from the CLI (`scripts/cn`). See [API.md](API.md) for the full reference.
 - OpenAI-compatible endpoint to plug in an LLM.
+- **MCP endpoint** — connect Claude, Gemini, or any MCP-compatible client straight to your vault. See [MCP.md](MCP.md).
 - **Partitions** — organize your notes into independent workspaces, each optionally synced to a different git repository.
 - **Shared links** — share any note as a public read-only link, with optional password and expiry.
 - **Git sync** — push notes to any GitHub / Gitea / Forgejo / GitLab repository (HTTPS token).
@@ -246,6 +247,12 @@ The REST API is documented in **[API.md](API.md)**, including:
 - `cn` CLI script commands and examples (`ls`, `get`, `put`, `rm`, `mv`, `query`, `search`, `shares`, `key`)
 - Full endpoint reference (notes, search, assets, shared notes, git sync)
 - Query DSL filter/sort/logic reference
+
+---
+
+## MCP
+
+See **[MCP.md](MCP.md)** for the full MCP reference — connecting Claude, Gemini, or any MCP-compatible client to your vault over `POST /mcp`.
 
 ---
 
