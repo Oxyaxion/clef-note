@@ -3,14 +3,25 @@
 # Commands: ls, get, put, rm, mv, query, search, shares, key
 # Config:   CN_URL (default: http://localhost:3000)
 #           CN_KEY or CLEF_NOTE_KEY
+#           CN_PARTITION or -p/--partition <slug> — target a specific
+#           partition's notes (ls, get, put, rm, mv) instead of the server's
+#           active one; unset uses whichever partition is active.
 
 set -euo pipefail
 
 CN_URL="${CN_URL:-${AN_URL:-${CLEF_NOTE_URL:-http://localhost:3000}}}"
 CN_KEY="${CN_KEY:-${AN_KEY:-${CLEF_NOTE_KEY:-}}}"
+CN_PARTITION="${CN_PARTITION:-}"
+
+# Optional leading -p/--partition <slug> flag, e.g. `cn -p notes rm foo`
+if [[ "${1:-}" == "--partition" || "${1:-}" == "-p" ]]; then
+    CN_PARTITION="${2:-}"
+    shift 2
+fi
 
 auth_args=()
 [[ -n "$CN_KEY" ]] && auth_args+=(-H "Authorization: Bearer $CN_KEY")
+[[ -n "$CN_PARTITION" ]] && auth_args+=(-H "X-Partition: $CN_PARTITION")
 
 BOLD=$'\e[1m'
 DIM=$'\e[2m'
@@ -158,7 +169,7 @@ case "$cmd" in
     cat <<'EOF'
 cn — Clef Note CLI
 
-Usage: cn <command> [args]
+Usage: cn [-p|--partition <slug>] <command> [args]
 
 Commands:
   ls                      List all notes (★ = pinned)
@@ -173,12 +184,16 @@ Commands:
   key                     Show API key
 
 Config (env vars):
-  CN_URL    Backend URL   (default: http://localhost:3000)
-  CN_KEY    API key       (fallback: CLEF_NOTE_KEY)
+  CN_URL         Backend URL   (default: http://localhost:3000)
+  CN_KEY         API key       (fallback: CLEF_NOTE_KEY)
+  CN_PARTITION   Partition slug to target for ls/get/put/rm/mv (fallback:
+                 -p/--partition flag; unset uses the server's active
+                 partition — see `cn` vs the web UI's partition switcher)
 
 Examples:
   cn ls
   cn get "Dev/Rust - lifetimes"
+  cn -p notes rm "Test MCP - Note de vérification"
   echo "# Hello" | cn put "scratch"
   cn mv "scratch" "Notes/scratch"
   cn query "#rust status:active"

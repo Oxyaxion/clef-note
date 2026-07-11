@@ -134,6 +134,40 @@ impl axum::extract::FromRequestParts<Arc<AppState>> for ActivePartition {
     }
 }
 
+/// Injects a `PartitionState` chosen by the `X-Partition` request header, or
+/// the currently active partition when the header is absent. Mirrors the
+/// `partition` argument accepted by MCP tools, but for REST callers (e.g. the
+/// `cn` CLI) that want to target a specific vault without switching the
+/// server's active partition.
+pub struct ResolvedPartition(pub Arc<PartitionState>);
+
+impl axum::extract::FromRequestParts<Arc<AppState>> for ResolvedPartition {
+    type Rejection = (StatusCode, &'static str);
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        state: &Arc<AppState>,
+    ) -> Result<Self, Self::Rejection> {
+        let requested = parts
+            .headers
+            .get("x-partition")
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_string);
+
+        let slug = match requested {
+            Some(slug) => slug,
+            None => state.active_partition.read().await.clone(),
+        };
+
+        let partitions = state.partitions.read().await;
+        let partition = partitions
+            .get(&slug)
+            .cloned()
+            .ok_or((StatusCode::NOT_FOUND, "unknown partition"))?;
+        Ok(ResolvedPartition(partition))
+    }
+}
+
 // ── API handlers ──────────────────────────────────────────────────────────────
 
 pub async fn list_partitions(State(state): State<Arc<AppState>>) -> Json<Vec<PartitionInfo>> {
@@ -267,4 +301,76 @@ pub async fn delete_partition(
     tokio::fs::remove_dir_all(&partition_dir).await.ok();
 
     StatusCode::NO_CONTENT
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::extract::FromRequestParts;
+
+    async fn make_state(root: &std::path::Path) -> Arc<AppState> {
+        let a_dir = root.join("a");
+        let b_dir = root.join("b");
+        tokio::fs::create_dir_all(&a_dir).await.unwrap();
+        tokio::fs::create_dir_all(&b_dir).await.unwrap();
+
+        let pa = init("a".into(), "A".into(), a_dir, None).await;
+        let pb = init("b".into(), "B".into(), b_dir, None).await;
+        let mut map = HashMap::new();
+        map.insert("a".to_string(), Arc::new(pa));
+        map.insert("b".to_string(), Arc::new(pb));
+
+        Arc::new(AppState {
+            root_path: root.to_path_buf(),
+            partitions: tokio::sync::RwLock::new(map),
+            active_partition: tokio::sync::RwLock::new("a".to_string()),
+            password_hash: String::new(),
+            sessions: crate::session::SessionStore::new(),
+            api_key: None,
+            login_guard: crate::auth::LoginGuard::new(),
+            oidc_client: None,
+        })
+    }
+
+    #[tokio::test]
+    async fn resolved_partition_defaults_to_active_without_header() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = make_state(dir.path()).await;
+
+        let (mut parts, _) = axum::http::Request::builder().body(()).unwrap().into_parts();
+        let ResolvedPartition(vault) = ResolvedPartition::from_request_parts(&mut parts, &state)
+            .await
+            .unwrap();
+        assert_eq!(vault.slug, "a");
+    }
+
+    #[tokio::test]
+    async fn resolved_partition_honors_header_override() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = make_state(dir.path()).await;
+
+        let (mut parts, _) = axum::http::Request::builder()
+            .header("x-partition", "b")
+            .body(())
+            .unwrap()
+            .into_parts();
+        let ResolvedPartition(vault) = ResolvedPartition::from_request_parts(&mut parts, &state)
+            .await
+            .unwrap();
+        assert_eq!(vault.slug, "b");
+    }
+
+    #[tokio::test]
+    async fn resolved_partition_rejects_unknown_slug() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = make_state(dir.path()).await;
+
+        let (mut parts, _) = axum::http::Request::builder()
+            .header("x-partition", "nope")
+            .body(())
+            .unwrap()
+            .into_parts();
+        let result = ResolvedPartition::from_request_parts(&mut parts, &state).await;
+        assert!(matches!(result, Err((StatusCode::NOT_FOUND, _))));
+    }
 }

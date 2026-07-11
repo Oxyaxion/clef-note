@@ -10,7 +10,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use axum::extract::Query as AxumQuery;
-use crate::{AppState, db::{NoteMeta, NoteStub}, partitions::ActivePartition};
+use crate::{AppState, db::{NoteMeta, NoteStub}, partitions::{ActivePartition, ResolvedPartition}};
 
 fn to_500<E: std::fmt::Display>(e: E) -> StatusCode {
     tracing::error!("internal error: {e}");
@@ -69,7 +69,7 @@ pub struct RenameBody {
 
 pub async fn list_notes(
     State(_state): State<Arc<AppState>>,
-    ActivePartition(vault): ActivePartition,
+    ResolvedPartition(vault): ResolvedPartition,
 ) -> Result<Json<Vec<NoteMeta>>, StatusCode> {
     let db = vault.db.clone();
     let mut notes: Vec<NoteMeta> = tokio::task::spawn_blocking(move || db.list_all_meta())
@@ -103,7 +103,7 @@ pub fn read_mtime(path: &std::path::Path) -> i64 {
 
 pub async fn get_note(
     State(_state): State<Arc<AppState>>,
-    ActivePartition(vault): ActivePartition,
+    ResolvedPartition(vault): ResolvedPartition,
     Path(name): Path<String>,
 ) -> Result<Json<NoteContent>, StatusCode> {
     if !is_safe_note_name(&name) {
@@ -124,7 +124,7 @@ pub async fn get_note(
 
 pub async fn put_note(
     State(_state): State<Arc<AppState>>,
-    ActivePartition(vault): ActivePartition,
+    ResolvedPartition(vault): ResolvedPartition,
     Path(name): Path<String>,
     Json(body): Json<PutNoteBody>,
 ) -> Result<StatusCode, StatusCode> {
@@ -164,7 +164,7 @@ pub struct AssetResponse {
 
 pub async fn rename_note(
     State(_state): State<Arc<AppState>>,
-    ActivePartition(vault): ActivePartition,
+    ResolvedPartition(vault): ResolvedPartition,
     Path(name): Path<String>,
     Json(body): Json<RenameBody>,
 ) -> Result<StatusCode, StatusCode> {
@@ -217,7 +217,7 @@ pub async fn rename_note(
 
 pub async fn delete_note(
     State(_state): State<Arc<AppState>>,
-    ActivePartition(vault): ActivePartition,
+    ResolvedPartition(vault): ResolvedPartition,
     Path(name): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
     if !is_safe_note_name(&name) {
